@@ -1284,15 +1284,15 @@ for s,t in enumerate(times_obs_forward):
     scores_array[int(2*T+s),:] = scores/np.linalg.norm(scores) 
 
 
-times_score = [0,T/2,T-1,3/2*T,2*T-1,5/2*T,3*T-1]
+#times_score = [0,T/2,T-1,3/2*T,2*T-1,5/2*T,3*T-1]
+times_score = [0,T-1,2*T-1,3*T-1]
 
 for t in range(len(times_score)):
-    plt.plot(np.arange(N),scores_array[int(times_score[t]),:],label=f"t={times_score[t]}")
+    plt.plot(np.arange(N),scores_array[int(times_score[t]),:],label=f"t={times_score[t]*dt_couple if t==2 else times_score[t]*dt:.2f}")
 plt.xlabel("site")
 plt.ylabel("correlation with observer")
 plt.legend()
 plt.show()
-
 
 
 
