@@ -694,11 +694,9 @@ def gaussian_purification(V):
 
 
 def tfd_cov(N):  
-    k = 5
-    m_squared = 13
     HL = np.zeros((2*N,2*N))
         
-    for i in range(N):
+    for i in range(2*N):
         if i < N-1:
             HL[i, i] = m_squared + 2 * k  # on-site + two neighbors
             HL[i,i+1] = -k
@@ -1080,7 +1078,7 @@ mask_All = np.ones((1, 2 * N))
 # For a real TFD, you would sample from your Covariance Matrix here using np.random.multivariate_normal
 # Here we use a simple uncorrelated vacuum approximation for demonstration
 
-Gamma_TFD = tfd_cov(N)
+Gamma_TFD = tfd_cov(N,k=params["k_coupling"],m_squared=params["m_squared"])
 q,p = sample_tfd_state(Gamma_TFD, M, N)
 state = (q, p)
 
@@ -1210,7 +1208,7 @@ HR_full[np.ix_(range(3*N, 4*N), range(3*N, 4*N))] = HL[N:, N:]
 
 H_LR = HL_full+HR_full
 
-H_coupling += H_LR
+#H_coupling += H_LR
 
 H_coupling_obs = pad_matrix_for_observer(H_coupling)
 
@@ -1290,7 +1288,7 @@ for t in range(len(times)):
 plt.xlabel("site")
 plt.ylabel("correlation with observer")
 plt.legend()
-plt.show()
+plt.savefig("plots/observer-correlation-vs-site.pdf")
 
 
 
@@ -1300,7 +1298,7 @@ time_axis = np.concatenate((np.arange(steps),np.arange(steps,steps+steps_couplin
 plt.plot(time_axis,total_energy)
 plt.xlabel("time")
 plt.ylabel("energy")
-plt.show()
+plt.savefig("plots/energy-vs-time.pdf")
 
 """
 plt.plot(time_axis,mut_info_L,color="black",label="left")
@@ -1309,7 +1307,7 @@ plt.plot(time_axis,tot_mut_info_obs,color="blue",label="total")
 plt.xlabel("time")
 plt.ylabel("mutual information")
 plt.legend()
-plt.show()
+plt.savefig("mutual-inforamtion-vs-time.pdf")
 """
 
 def compute_MI_with_observer(Gamma, observer_idx, target_indices):
@@ -1388,7 +1386,7 @@ def mut_info_vs_segments(Gamma,center_idx,n_one_side):
     plt.ylabel("mutual info with observer")
     plt.title("mutual information of segments with observer")
     plt.legend()
-    plt.show()
+    plt.savefig("plots/mutual-information-segment-with-observer.pdf")
 
 q_obs,p_obs = state_with_observer
 X_final = np.hstack([q_obs, p_obs])    
@@ -1411,7 +1409,7 @@ plt.ylabel('OTOC (Operator Growth)')
 plt.title(r'Scrambling with $\lambda$={params["lam"]}')
 plt.legend()
 plt.grid(True, which="both", ls="-")
-plt.show()
+plt.savefig(f"plots/scrambling-with-lambda=[lam].pdf")
 
 # --- 6. Check Fidelity ---
 # Extract the Right side of the final state and compare to target
@@ -1432,7 +1430,7 @@ for i in range(2*N):
 plt.plot(np.arange(2*N),fidelity_list)
 plt.ylabel("fidelity")
 plt.xlabel("site")
-plt.show()
+plt.savefig("plots/fidelity-vs-site.pdf")
 
 #print(f"Teleportation Fidelity: {fidelity:.4f}")
 

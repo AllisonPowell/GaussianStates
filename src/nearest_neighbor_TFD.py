@@ -932,13 +932,14 @@ plt.title("Nearest-Neighbor Modular Hamiltonian")
 plt.show()
 """
 
+"""
 mode_indices = np.linspace(0,HL.shape[0],HL.shape[0])
 plt.plot(mode_indices, eigh(HL)[0])
 plt.title("Nearest-neighbor Coupling Modular Hamiltonian Eigenvalues")
 plt.xlabel("quadrature")
 plt.ylabel("eigenvalue")
 plt.show()
-
+"""
 
 
 #HL = build_harmonic_chain_hamiltonian(4, m_squared=1.5, k=1.0)
@@ -966,7 +967,7 @@ t0 = 4
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
-plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
+#plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
 
 
 
@@ -1124,6 +1125,7 @@ initial_mut_info= []
 for i in range(Gamma_TFD.shape[0]//2):
     initial_mut_info.append(compute_MI_with_observer(Gamma_LR, observer_idx, [i]))
 
+"""
 plt.plot(np.arange(Gamma_TFD.shape[0]//2),initial_mut_info,color='k')
 plt.axvline(insert_idx,color="blue",linestyle="dashed")
 plt.axvline(teleport_idx,color="red",linestyle="dashed")
@@ -1133,7 +1135,7 @@ plt.title("mutual information with observer before coupling")
 plt.legend()
 plt.show()
 
-
+"""
 
 
 #######

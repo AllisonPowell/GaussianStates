@@ -185,4 +185,4 @@ connect_1_to_2_cover(ax, layer_nodes[7], layer_nodes[8], positions_3d, alpha=0.5
 ax.set_title("Wormhole Graph")
 ax.set_axis_off()
 plt.tight_layout()
-plt.savefig("plot/wormhole-graph.pdf")
+plt.savefig("plots/wormhole-graph.pdf")
