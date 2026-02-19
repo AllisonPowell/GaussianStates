@@ -632,8 +632,8 @@ def fidelity(V1,V2):
 
 
 # Parameters
-L = 7
-Lh = 5
+L = 4
+Lh = 3
 n_tube = 0
 g_tube = 1
 mu_A = 1
@@ -1281,7 +1281,7 @@ times = np.concatenate((times_obs_forward,times_obs_coupling,times_obs_final))
 plt.plot(times,I_obs_L,"k",label = "mutual info with left")
 plt.plot(times,I_obs_R,"r",label = "mutual info with right")
 plt.plot(times,I_tot,"blue",label = "total mutual info")
-#plt.plot(times,I_insert,"green",label = "mutual info with insert")
+plt.plot(times,I_insert,"green",label = "mutual info with insert")
 plt.axvline(t0)
 
 

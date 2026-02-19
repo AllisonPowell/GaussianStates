@@ -531,7 +531,7 @@ bdy_2_idx = np.arange(bdy_len,2*bdy_len)
 
 #carrier_indices = np.arange(0, bdy_len)  # skip teleportation qubit
 
-insert_idx = 5
+insert_idx = 1
 carrier_indices1 = np.arange(0,insert_idx)
 carrier_indices2 = np.arange(insert_idx+1,bdy_len)
 carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
@@ -545,6 +545,7 @@ mu = 1
 k=5
 m_squared=13
 omega0 = np.sqrt(m_squared + 2*k)
+#omega0=1
 
 for j in carrier_indices:
     x_L = bdy_1_idx[j]
@@ -553,8 +554,106 @@ for j in carrier_indices:
     H_coupling_OG[x_L, x_R] = H_coupling_OG[x_R, x_L] = mu*omega0 / 2
     # p coupling
     H_coupling_OG[x_L + n_total, x_R + n_total] = H_coupling_OG[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+"""
+L = 4
+Lh = 3
+n_tube = 0
+g_tube = 1
+mu_A = 1
+mu_B = 1
+mu_s = 1
+t = 10
+
+# Build the graph
+N = 2**(Lh - 1) * (2**(L - Lh + 1) - 1)
+bdy_len = 2**(L - 1)
+bdy_1 = np.arange(N - bdy_len, N)
+N_tot = 2 * N + n_tube * 2**(Lh - 1)
+bdy_2 = np.arange(N_tot - bdy_len, N_tot)
+
+# Build base adjacency matrix A
+A = np.zeros((N, N), dtype=np.float64)
+for l1 in range(Lh, L + 1):
+    for s1 in range(1, 2**(l1 - 1) + 1):
+        for l2 in range(Lh, L + 1):
+            for s2 in range(1, 2**(l2 - 1) + 1):
+                prev1 = sum(2**(k - 1) for k in range(Lh, l1))
+                prev2 = sum(2**(k - 1) for k in range(Lh, l2))
+                ind1 = prev1 + s1 - 1
+                ind2 = prev2 + s2 - 1
+                if l1 == l2 and (abs(s1 - s2) == 1 or abs(s1 - s2) == 2**(l1 - 1) - 1):
+                    A[ind1, ind2] = mu_s
+                if l2 == l1 + 1 and s2 in [2*s1, 2*s1 - 1]:
+                    A[ind1, ind2] = mu_s
+                if l1 == l2 + 1 and s1 in [2*s2, 2*s2 - 1]:
+                    A[ind1, ind2] = mu_s
+
+# Full adjacency with duplicated regions and tube
+A_tot = np.zeros((N_tot, N_tot),dtype=np.float64)
+A_tot[:N, :N] = A
+A_tot[N_tot - N:, N_tot - N:] = A
+hor_1 = np.arange(2**(Lh - 1))
+for ell in range(n_tube + 1):
+    offset = N + (ell - 1) * 2**(Lh - 1)
+    if ell == 0:
+        for i in hor_1:
+            A_tot[i, i + N] = A_tot[i + N, i] = g_tube
+    elif ell > 0:
+        for i in hor_1:
+            A_tot[i + offset, i + offset + 2**(Lh - 1)] = g_tube
+            A_tot[i + offset + 2**(Lh - 1), i + offset] = g_tube
+            # Horizontal connections
+            if i < 2**(Lh - 1) - 1:
+                A_tot[i + offset, i + offset + 1] = A_tot[i + offset + 1, i + offset] = g_tube
+            else:
+                A_tot[i + offset, i + offset - (2**(Lh - 1) - 1)] = A_tot[i + offset - (2**(Lh - 1) - 1), i + offset] = g_tube
+ 
+# Index sets
+un_set = np.concatenate([bdy_1, bdy_2])
+meas_set = np.setdiff1d(np.arange(N_tot), un_set)
 
 
+Gamma_0 =.5 * np.eye(2*N_tot,dtype=np.complex128)
+
+
+
+
+# Number of total modes
+n = N_tot
+
+# Default: mass = 1, so kinetic term is identity
+M = 1* np.eye(n)
+D = np.zeros((n,n))
+for i in range(n):
+    D[i,i]=sum(A_tot[i,:])
+
+# Potential term = adjacency + onsite mass term
+mu_squared = 0  # Choose this to control oscillator frequency
+K = D - A_tot + mu_squared * np.eye(n)
+
+# Construct full Hamiltonian H (2n x 2n) in (x1..xn, p1..pn) basis
+H = np.block([
+    [K,         np.zeros((n, n))],
+    [np.zeros((n, n)),   M     ]
+])
+
+
+n = Gamma_0.shape[0] // 2
+Omega = symplectic_form(n)
+S_t = expm(Omega @ H * t)
+Gamma_q = S_t @ Gamma_0 @ S_t.T
+
+
+Gamma_TFD = momentum_measured_1(Gamma_q,un_set,meas_set)
+
+
+b = bdy_len
+keep = np.arange(b)  # keep left boundary
+Gamma_reduced = trace_out_subsystem(Gamma_TFD, keep)
+
+#HL = covmat_to_hamil(Gamma_reduced)
+HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
+"""
 HL = np.zeros((2*N,2*N))
 for i in range(2*N):
     if i < N-1:
@@ -568,6 +667,7 @@ for i in range(2*N):
     if i > N-1:
         HL[i,i] = 1
 
+#N = Gamma_TFD.shape[0]//4
 HL_full = np.zeros((4*N, 4*N))
 HL_full[np.ix_(range(N), range(N))] = HL[:N, :N]                     # x-x
 HL_full[np.ix_(range(N), range(2*N, 3*N))] = HL[:N, N:]             # x-p
@@ -651,8 +751,8 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
     else:
         # Parameters
-        L = 7
-        Lh = 5
+        L = 4
+        Lh = 3
         n_tube = 0
         g_tube = 1
         mu_A = 1
@@ -749,7 +849,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0 = 6
+        t0 = 5
 
 
     ############
@@ -863,6 +963,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
 
     Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
+    print(extract_subsystem_covariance(Gamma_final,[11]))
     return Gamma_final_observer, Gamma_final, Gamma_forward_observer, Gamma_forward
 
 def orthogonal_with_first_col(v, eps=1e-12):
@@ -2833,12 +2934,12 @@ block_sizes = [1]
 
 N = 10
 obs_idx = 2*N
-insert_idx = 5
+insert_idx = 1
 teleported_idx = insert_idx+N
-bdy_len = 10
+bdy_len = N
 
-Ss = np.linspace(-1.5, 1.5, 4)
-Thetas = np.linspace(0, 2*np.pi, 4, endpoint=False)
+Ss = np.linspace(-1.5, 1.5, 3)
+Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
 sites=np.arange(N,2*N)
@@ -2855,7 +2956,6 @@ plt.xlabel("decoder block size")
 plt.ylabel("fidelity")
 plt.legend()
 plt.show()
-
 """    
 
 plt.plot(sites,site_fidelities_symp,label="symplectic")

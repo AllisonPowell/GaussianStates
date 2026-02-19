@@ -1044,8 +1044,8 @@ def step_coupling_window_twa(state, dt, params, G_cpl_obs):
 
 # System Parameters
 N = 10           # Number of sites in the ring
-M = 10000        # Number of trajectories (samples)
-params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.0, 'N_site': N}
+M = 2000        # Number of trajectories (samples)
+params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.001, 'N_site': N}
 T = 4         # Total simulation time
 dt = .005        # Time step
 steps = int(T / dt)
@@ -1135,11 +1135,11 @@ for s in range(steps):
     scores = signal_map_vs_observer(q_obs, p_obs, 2*N)
     scores_array[s,:] = scores/np.linalg.norm(scores) 
     total_energy.append(sum(total_energy_LR_obs(q_obs,p_obs,N,params["m_squared"],params["k_coupling"]))/M)
-    mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
-    mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
+    #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
+    #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
     mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))    
+    mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
+    tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))    
     #current_dq = get_derivatives_masked(state,params,mask_L)[0]    
     #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
     #otoc_history[s,:]=otoc_vals
@@ -1221,11 +1221,11 @@ for s in range(steps_coupling):
     scores_array[steps+s,:] = scores/np.linalg.norm(scores)
     total_energy.append(energy_quadratic_from_samples(q_obs[:, :2*N], p_obs[:, :2*N], H_coupling))
 
-    mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
-    mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
+    #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
+    #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
     mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
+    mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
+    tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
     #current_dq = get_derivatives_masked(state,params,mask_L)[0]    
     #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
     #otoc_history[s,:]=otoc_vals
@@ -1272,9 +1272,9 @@ for s in range(steps):
     #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
     #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
 
-    #mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))    
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
+    mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
+    mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))    
+    tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
     #current_dq = get_derivatives_masked(state,params,mask_R)[0]
     #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
     #otoc_history[s+steps,:]=otoc_vals
@@ -1289,7 +1289,8 @@ for t in range(len(times)):
 plt.xlabel("site")
 plt.ylabel("correlation with observer")
 plt.legend()
-plt.savefig("plots/observer-correlation-vs-site.pdf")
+plt.show()
+#plt.savefig("plots/observer-correlation-vs-site.pdf")
 
 
 
@@ -1299,17 +1300,19 @@ time_axis = np.concatenate((np.arange(steps),np.arange(steps,steps+steps_couplin
 plt.plot(time_axis,total_energy)
 plt.xlabel("time")
 plt.ylabel("energy")
-plt.savefig("plots/energy-vs-time.pdf")
+plt.show()
+#plt.savefig("plots/energy-vs-time.pdf")
 
-"""
+
 plt.plot(time_axis,mut_info_L,color="black",label="left")
 plt.plot(time_axis,mut_info_R,color="red",label="right")
 plt.plot(time_axis,tot_mut_info_obs,color="blue",label="total")
 plt.xlabel("time")
 plt.ylabel("mutual information")
 plt.legend()
-plt.savefig("mutual-inforamtion-vs-time.pdf")
-"""
+plt.show()
+#plt.savefig("mutual-inforamtion-vs-time.pdf")
+
 
 def compute_MI_with_observer(Gamma, observer_idx, target_indices):
     # Gamma: 2n x 2n covariance matrix
@@ -1387,7 +1390,8 @@ def mut_info_vs_segments(Gamma,center_idx,n_one_side):
     plt.ylabel("mutual info with observer")
     plt.title("mutual information of segments with observer")
     plt.legend()
-    plt.savefig("plots/mutual-information-segment-with-observer.pdf")
+    plt.show()
+    #plt.savefig("plots/mutual-information-segment-with-observer.pdf")
 
 q_obs,p_obs = state_with_observer
 X_final = np.hstack([q_obs, p_obs])    
@@ -1410,7 +1414,8 @@ plt.ylabel('OTOC (Operator Growth)')
 plt.title(r'Scrambling with $\lambda$={params["lam"]}')
 plt.legend()
 plt.grid(True, which="both", ls="-")
-plt.savefig(f"plots/scrambling-with-lambda=[lam].pdf")
+plt.show()
+#plt.savefig(f"plots/scrambling-with-lambda=[lam].pdf")
 
 # --- 6. Check Fidelity ---
 # Extract the Right side of the final state and compare to target
@@ -1431,7 +1436,8 @@ for i in range(2*N):
 plt.plot(np.arange(2*N),fidelity_list)
 plt.ylabel("fidelity")
 plt.xlabel("site")
-plt.savefig("plots/fidelity-vs-site.pdf")
+plt.show()
+#plt.savefig("plots/fidelity-vs-site.pdf")
 
 #print(f"Teleportation Fidelity: {fidelity:.4f}")
 

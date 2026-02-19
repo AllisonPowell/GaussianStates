@@ -693,22 +693,20 @@ def gaussian_purification(V):
     return V_pure_phys_xxpp
 
 
-def tfd_cov(N):  
-    k = 5
-    m_squared = 16
-    HL = np.zeros((N,N))
+def tfd_cov(N,k,m_squared):  
+    HL = np.zeros((2*N,2*N))
         
-    for i in range(N):
-        if i < N//2-1:
+    for i in range(2*N):
+        if i < N-1:
             HL[i, i] = m_squared + 2 * k  # on-site + two neighbors
             HL[i,i+1] = -k
             HL[i+1, i] = -k 
                  
-        if i == N//2-1:
+        if i == N-1:
             HL[i,0] = -k
             HL[0,i] = -k 
             HL[i,i] = m_squared + 2 * k 
-        if i > N//2-1:
+        if i > N-1:
             HL[i,i] = 1
 
     Gamma_reconstructed, nu, eps_reconstructed = build_thermal_state_from_modular_hamiltonian(HL)
@@ -773,6 +771,33 @@ def insert_observer_twa(state, N_site, insert_idx, Gamma_2mode):
     p_expanded = np.hstack([p_new, p_obs.reshape(-1, 1)])
     
     return (q_expanded, p_expanded)
+
+def insert_signal_twa(state, N_site, insert_idx, Gamma_insert):
+    """
+    state: Tuple (q, p) each shape (M, 2*N_site)
+    Gamma_2mode: (4, 4) Covariance matrix of the TMS state
+    """
+    q, p = state
+    M = q.shape[0]
+    
+    # 1. Sample the 2-mode squeezed state (Signal + Observer)
+    # Gamma_2mode basis: [q_sig, q_obs, p_sig, p_obs]
+    tms_samples = np.random.multivariate_normal(np.zeros(2), Gamma_insert, size=M)
+    
+    q_sig = tms_samples[:, 0]
+    p_sig = tms_samples[:, 1]
+
+    
+    # 2. Replace the Signal site trajectories
+    # We are physically "removing" the old L_0 state and putting in a new one
+    q_new = q.copy()
+    p_new = p.copy()
+    
+    q_new[:, insert_idx] = q_sig
+    p_new[:, insert_idx] = p_sig
+    
+    return (q_new, p_new)
+
 
 import numpy as np
 
@@ -1042,404 +1067,517 @@ def step_coupling_window_twa(state, dt, params, G_cpl_obs):
     return state
 
 
-# --- Simulation Setup ---
 
-# System Parameters
+def step_coupling_window_twa_no_obs(state, dt, params, G_cpl):
+    # 1) half step nonlinear ring dynamics
+    state = step_verlet_LR(state, 0.5*dt, params, evolve_left=True, evolve_right=True)
+
+    # 2) exact linear coupling map
+    state = apply_quadratic_coupling_exact(state, G=G_cpl, tau=dt)
+
+    # 3) half step nonlinear ring dynamics
+    state = step_verlet_LR(state, 0.5*dt, params, evolve_left=True, evolve_right=True)
+    return state
+
+def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_coupling,params):
+    state = state_TFD
+    steps = int(t0/dt)
+    steps_coupling = int(t_couple/dt)
+
+
+    for t in range(steps):
+        state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False)
+
+    #Gamma_2mode = two_mode_squeezed_state(r=1)
+
+    Rot = np.array([[np.cos(theta), -np.sin(theta)],
+                [np.sin(theta), np.cos(theta)]])
+    Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
+                          [0, np.exp(2*s)]])
+
+    Gamma_insert = Rot @ Squeeze @ Rot.T
+
+    #state_with_observer = insert_observer_twa(state, N, insert_idx, Gamma_2mode)
+    state_no_observer = insert_signal_twa(state, N, insert_idx, Gamma_insert)
+
+
+
+    for t in range(steps):
+        #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=True, evolve_right=False)
+        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False)
+        #H_coupling_obs = pad_matrix_for_observer(H_coupling)
+
+    for t in range(steps_coupling):
+        #state_with_observer = step_coupling_window_twa(state_with_observer, dt, params, H_coupling_obs)
+        state_no_observer = step_coupling_window_twa(state_no_observer, dt, params, H_coupling) 
+        #state_no_observer = step_coupling_window_twa_no_obs(state_no_observer, dt, params, H_coupling)     
+    for t in range(steps):   
+        #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=False, evolve_right=True)
+        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True)
+    return state_no_observer#,state_with_observer
+    
+def coupling_hamiltonian(N,mu,insert_idx,params):
+
+    carrier_indices1 = np.arange(0,insert_idx)
+    carrier_indices2 = np.arange(insert_idx+1,N)
+    carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
+
+    bdy_1_idx = np.arange(N)
+    bdy_2_idx = np.arange(N,2*N)
+
+    n_total = 2*N
+    H_coupling = np.zeros((2*n_total, 2*n_total))
+    mu = 1
+
+    omega0 = np.sqrt(params["m_squared"] + 2*params["k_coupling"])
+
+
+    for j in carrier_indices:
+        x_L = bdy_1_idx[j]
+        x_R = bdy_2_idx[j]
+        # x coupling
+        H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu * omega0/ 2
+        # p coupling
+        H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+    return H_coupling
+
+def make_input_covariance(s, theta):
+    Rot = np.array([[np.cos(theta), -np.sin(theta)],
+                    [np.sin(theta),  np.cos(theta)]])
+    Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
+                              [0, np.exp( 2*s)]])
+    return sym(Rot @ Squeeze @ Rot.T)
+
+
+
+def sym(A): 
+    return 0.5*(A + A.T)
+
+
+def pack_params(X, Y):
+    # Y symmetric
+    return np.array([X[0,0], X[0,1], X[1,0], X[1,1], Y[0,0], Y[0,1], Y[1,1]], dtype=float)
+
+def unpack_params(p):
+    a,b,c,d,y11,y12,y22 = p
+    X = np.array([[a,b],[c,d]], dtype=float)
+    Y = np.array([[y11,y12],[y12,y22]], dtype=float)
+    return X, Y
+
+def residuals(p, Vins, Vouts):
+    X, Y = unpack_params(p)
+    r = []
+    for Vin, Vout in zip(Vins, Vouts):
+        E = sym(Vout - (X @ Vin @ X.T + Y))
+        r.extend([E[0,0], E[0,1], E[1,1]])  # 3 independent comps
+    return np.array(r, dtype=float)
+
+
+def fit_gaussian_channel(Vins, Vouts, X0=None, Y0=None, lam=1e-3, iters=200):
+    Vins  = [sym(V) for V in Vins]
+    Vouts = [sym(V) for V in Vouts]
+
+    if X0 is None:
+        X0 = np.eye(2)
+    if Y0 is None:
+        # crude initial Y as average difference
+        Y0 = sym(np.mean([Vout - X0@Vin@X0.T for Vin,Vout in zip(Vins,Vouts)], axis=0))
+
+    p = pack_params(X0, Y0)
+
+    for _ in range(iters):
+        r = residuals(p, Vins, Vouts)
+        cost = r @ r
+
+        # numerical Jacobian (7 params)
+        J = np.zeros((len(r), len(p)))
+        eps = 1e-6
+        for j in range(len(p)):
+            dp = np.zeros_like(p); dp[j] = eps
+            r2 = residuals(p + dp, Vins, Vouts)
+            J[:,j] = (r2 - r) / eps
+
+        # LM step: (J^T J + lam I) delta = J^T r
+        A = J.T @ J + lam*np.eye(len(p))
+        g = J.T @ r
+        delta = np.linalg.solve(A, g)
+
+        p_new = p - delta
+        r_new = residuals(p_new, Vins, Vouts)
+        cost_new = r_new @ r_new
+
+        # accept/reject, update damping
+        if cost_new < cost:
+            p = p_new
+            lam *= 0.7
+        else:
+            lam *= 2.0
+
+        if np.linalg.norm(delta) < 1e-10:
+            break
+
+    X, Y = unpack_params(p)
+    return X, sym(Y)
+
+def decoder_from_X_symplectic(X):
+    U, s, Vt = np.linalg.svd(X)
+    O1= U.copy()
+    O2 = Vt.copy()
+
+    if det(U)<0:
+        O1[:,1]*=-1
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+
+    if det(U)<0:
+        loss = np.diag((eta,-eta))
+    else:
+       loss = np.diag((eta,eta))  
+
+
+    return O1 @ squeeze @ O2
+
+def decoder_from_X_flip(X):
+    U, s, Vt = np.linalg.svd(X)
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+    loss = np.diag((s1,s2))
+
+    return U @ squeeze @ Vt
+
+def fidelity_stable(V1, V2):
+    V1 = 0.5*(V1 + V1.T)
+    V2 = 0.5*(V2 + V2.T)
+    n = V1.shape[0] // 2
+    omega = symplectic_form(n)
+
+    Vsum = V1 + V2
+    V_aux = omega.T @ np.linalg.inv(Vsum) @ (0.25 * omega + V2 @ omega @ V1)
+
+    I = np.eye(2*n)
+    A = V_aux @ omega
+
+    # A^{-2} = solve(A, solve(A, I))
+    Ainv2 = np.linalg.solve(A, np.linalg.solve(A, I))
+    inside = I + 0.25 * Ainv2
+
+    F_tot4 = np.linalg.det(2 * (sqrtm(inside) + I) @ V_aux)
+    F_tot = np.real_if_close(F_tot4)**0.25
+    F0 = F_tot / (np.linalg.det(Vsum)**0.25)
+
+    return float(np.real(F0))
+
+
+def decode_on_B_xxpp(V_RB_xxpp, S_dec,Y,subtract_Y):
+    I2 = np.eye(2)
+    # xxpp ordering: (xR, xB, pR, pB)
+    # decoding acts on (xB,pB) => indices [1,3], not contiguous.
+    V = 0.5*(V_RB_xxpp + V_RB_xxpp.T)
+    idx_R = [0, 2]
+    idx_B = [1, 3]
+
+    Vout = V.copy()
+
+    # transform blocks: B -> S_dec B S_dec^T, C -> C S_dec^T
+    A = V[np.ix_(idx_R, idx_R)]
+    B = V[np.ix_(idx_B, idx_B)]
+    C = V[np.ix_(idx_R, idx_B)]
+
+    if subtract_Y == True:
+        B-=Y
+
+    B2 = S_dec @ B @ S_dec.T
+    C2 = C @ S_dec.T
+
+    Vout[np.ix_(idx_R, idx_R)] = A
+    Vout[np.ix_(idx_B, idx_B)] = B2
+    Vout[np.ix_(idx_R, idx_B)] = C2
+    Vout[np.ix_(idx_B, idx_R)] = C2.T
+
+    return 0.5*(Vout + Vout.T)
+
+def reorder_to_block_form(Gamma):
+    """
+    Reorders 2-mode covariance matrix from [x0,p0,x1,p1] to [x0,x1,p0,p1]
+    """
+    perm = [0, 2, 1, 3]
+    return Gamma[np.ix_(perm, perm)]
+
+def tmsv_cov(r):
+    """
+    Returns 4x4 covariance matrix for a two-mode squeezed vacuum.
+    Mode 0: inserted into system
+    Mode 1: external observer
+    """
+    ch = np.cosh(2 * r)
+    sh = np.sinh(2 * r)
+    Z = np.diag([1, -1])
+    
+    cov = 0.5 * np.block([
+        [ch * np.eye(2),     sh * Z],
+        [sh * Z,             ch * np.eye(2)]
+    ])
+
+    cov = reorder_to_block_form(cov)
+    return cov
+
+def apply_channel_to_second_mode_xxpp(V_RB_xxpp, X, Y):
+    """
+    Apply a 1-mode Gaussian channel (X,Y) to mode B of a 2-mode covariance matrix
+    given in xxpp ordering: (xR, xB, pR, pB).
+
+    V_RB_xxpp: 4x4 covariance in order [xR, xB, pR, pB]
+    X, Y: 2x2 with respect to (xB, pB)
+    """
+    V = sym(V_RB_xxpp)
+    X = np.asarray(X, float)
+    Y = sym(np.asarray(Y, float))
+
+    # Indices for the R and B modes in xxpp ordering
+    idx_R = [0, 2]  # (xR, pR)
+    idx_B = [1, 3]  # (xB, pB)
+
+    # Extract 2x2 blocks in (x,p) ordering for each mode
+    A = V[np.ix_(idx_R, idx_R)]   # Cov of R
+    B = V[np.ix_(idx_B, idx_B)]   # Cov of B
+    C = V[np.ix_(idx_R, idx_B)]   # Cross-cov R-B
+
+    # Transform blocks under channel on B
+    A_out = A
+    C_out = C @ X.T
+    B_out = X @ B @ X.T + Y
+
+    # Reassemble full 4x4 in xxpp ordering
+    V_out = V.copy()
+    V_out[np.ix_(idx_R, idx_R)] = A_out
+    V_out[np.ix_(idx_R, idx_B)] = C_out
+    V_out[np.ix_(idx_B, idx_R)] = C_out.T
+    V_out[np.ix_(idx_B, idx_B)] = B_out
+
+    return sym(V_out)
+
+def entanglement_fidelity_gaussian(X, Y, S,subtract_Y,r=1.0):
+    V0 = tmsv_cov(r)
+    V1 = apply_channel_to_second_mode_xxpp(V0, X, Y)
+    V1_dec = decode_on_B_xxpp(V1,inv(S),Y,subtract_Y)
+    # zero means:
+    #mu0 = np.zeros(4)
+    #mu1 = np.zeros(4)  
+    return fidelity_stable(V0,V1_dec)
+
+def right_segment_ids_centered(center_idx,n,m):
+    i = m//2
+    if m == 1:
+        segment_telep=np.array([center_idx+n])
+    elif center_idx  - i >= 0  and center_idx  + i < n:
+        segment_telep = np.arange(center_idx + n - i, center_idx + n + i)
+    elif center_idx - i < 0 :
+        diff = np.abs(center_idx - i)
+        segment_telep_1 = np.arange(2*n-diff,2*n)
+        segment_telep_2 = np.arange(n ,center_idx + n + i)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    elif center_idx + i >= n:
+        diff = center_idx + i - n
+        segment_telep_1 = np.arange(center_idx + n - i,2*n)
+        segment_telep_2 = np.arange(n,n + diff)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    return(segment_telep)
+def decompose_X(X):
+    U, s, Vt = np.linalg.svd(X)
+    O1= U.copy()
+    O2 = Vt.copy()
+
+    if det(U)<0:
+        O1[:,1]*=-1
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+
+    if det(U)<0:
+        loss = np.diag((eta,-eta))
+    else:
+       loss = np.diag((eta,eta))  
+
+
+    return O1, loss, squeeze, O2
+
+def fidelity_vs_block_size(
+    block_sizes,
+    obs_idx,
+    insert_idx,
+    center_idx,
+    input_ensemble,   # list of (s, theta) you use for fitting
+    t0,
+    t_couple,
+    dt,
+    state_TFD,
+    H_coupling,
+    params
+):
+    N = params["N_site"]
+    Fms = []
+    Fmf = []
+
+    #state_with_obs,state_no_obs=teleportation_protocol(s=0,theta=0,insert_idx=insert_idx,t0=t0,t_couple=t_couple,dt=dt,state_TFD=state_TFD,H_coupling=H_coupling,params=params)
+    for m in block_sizes:
+        # --- 2) Define right segment of length m ---
+        #right_seg = right_segment_ids_centered(center_idx, bdy_len, m)
+
+        # --- 3) Build V_OR_xxpp and compute passive decoder O ---
+        #N_tot = 2*N+1
+        #obs_idx = 2*N
+        #V_OR_xxpp = build_V_OR_xxpp(Gamma_final_obs, obs_idx, right_seg,N_tot)
+
+
+        #O, v = build_passive_decoder_from_observer(V_OR_xxpp, m)
+
+        Vins, Vouts = [], []
+
+        for s, theta in input_ensemble:
+            # Run your usual protocol (NO observer) to get global Gamma_final
+            state_no_obs=teleportation_protocol(s,theta,insert_idx=insert_idx,t0=t0,t_couple=t_couple,dt=dt,state_TFD=state_TFD,H_coupling=H_coupling,params=params)
+
+
+            #B_xxpp = extract_block_xxpp(Gamma_final, right_seg)   # 2m x 2m
+
+            # Passive decode
+            #B_dec = passive_decode_right_block(B_xxpp, O)
+
+            # Take decoded first mode as Vout (2x2)
+            #Vout = first_mode_from_block(B_dec)
+
+            q_no_obs,p_no_obs = state_no_obs
+            X_no_obs = np.hstack([q_no_obs, p_no_obs])
+            sigma_no_obs = np.cov(X_no_obs, rowvar=False) 
+
+            #q_with_obs,p_with_obs = state_with_obs
+            #X_with_obs = np.hstack([q_with_obs, p_with_obs])
+            #sigma_with_obs = np.cov(X_with_obs, rowvar=False) 
+
+            if len(block_sizes)==1:
+                Vout = extract_subsystem_covariance(sigma_no_obs,[center_idx+N])
+            print(center_idx,extract_subsystem_covariance(sigma_no_obs,[11]))
+
+
+
+            # Your input Vin is the inserted mode covariance (2x2)
+            Vin = make_input_covariance(s, theta)  # returns 2x2 in (x,p)
+
+            Vins.append(Vin)
+            Vouts.append(Vout)
+
+
+
+        # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
+        X, Y = fit_gaussian_channel(Vins, Vouts)
+
+
+        rot1,loss,squeeze,rot2=decompose_X(X)
+        print(m,center_idx,"rot1=",rot1)
+        print(m,"rot2=",rot2)
+        print(m,"loss=",loss)
+        print(m,"squeeze=",squeeze)
+        print(m, "Y=",Y)
+
+        S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
+        S_dec_flip = decoder_from_X_flip(X)  # your preferred
+
+        Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False,r=1.0)
+        Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False,r=1.0)      
+        
+        Fms.append(Fs)
+        Fmf.append(Ff)
+
+
+    return np.array(Fms),np.array(Fmf)
+
+
+
+
 N = 10           # Number of sites in the ring
-M = 1000        # Number of trajectories (samples)
-params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.1, 'N_site': N}
-T = 4         # Total simulation time
+M = 2000        # Number of trajectories (samples)
+params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.001, 'N_site': N}        # Total simulation time
+t0=4
+t_couple = 3
 dt = .005        # Time step
-steps = int(T / dt)
+steps = int(t0 / dt)
 t_couple = 3
 steps_coupling = int(t_couple/dt)
-
-# Masks
-# shape (M, 2*N) -> Broadcastable
-mask_L = np.zeros((1, 2 * N))
-mask_L[0, :N] = 1.0  # Activate Left
-
-mask_L_observer = np.zeros((1, 2 * N+1))
-mask_L_observer[0, :N] = 1.0  # Activate Left
-
-mask_R = np.zeros((1, 2 * N))
-mask_R[0, N:] = 1.0  # Activate Right
-
-mask_R_observer = np.zeros((1, 2 * N+1))
-mask_R_observer[0, N:2*N] = 1.0  # Activate Right
-
-mask_All = np.ones((1, 2 * N))
-
-#params = {
-#    'omega': 1.0,
-#   'lam': 0.5,  # Non-zero lambda turns on Chaos/Scrambling
-#    'J': 0.5     # Coupling between sites
-#}
-
-# 1. Initialize State (Sampling from Vacuum/Gaussian)
-# For a real TFD, you would sample from your Covariance Matrix here using np.random.multivariate_normal
-# Here we use a simple uncorrelated vacuum approximation for demonstration
-
-Gamma_TFD = tfd_cov(2*N)
-q,p = sample_tfd_state(Gamma_TFD, M, N)
-state = (q, p)
-
-
-
-
-print("1. Evolving LEFT Backward...")
-for k in range(steps):
-    # dt is NEGATIVE
-    #state = rk4_step_masked(state, -dt, params, mask_L)
-    state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False)
-
-dq = np.zeros(q.shape)
-dp = np.zeros(p.shape)
-dp[:, 0] = 1.0  # Initial perturbation at site 0
-
-# Store OTOC data
-otoc_history = np.zeros((2*steps,2*N))
-sites_to_watch = [0, 1, 5, 9, 10] # Watch origin, neighbor, and far sites
-
-print("2. Inserting Information...")
-# Example: Inject a momentum kick (displacement) at Left Site 0
-# Operator V = exp(i * epsilon * q_L0) -> shifts p_L0
-epsilon = 0.5
 insert_idx = 1
-#state[1][:, insert_idx] += epsilon
-
-
-Gamma_2mode = two_mode_squeezed_state(r=1)
-state_with_observer_0 = insert_observer_twa(state, N, insert_idx, Gamma_2mode)
-state_with_observer = insert_observer_twa(state, N, insert_idx, Gamma_2mode)
-q0,p0=state_with_observer_0
-#print(mut_info_observer_ksg(q0, p0, 0, N, 2*N, k=5))
-
-#q_insert,p_insert = state
-
-#target_p = p_insert.copy()
-
-mut_info_L = []
-mut_info_R = []
-tot_mut_info_obs = []
-total_energy = []
-
-scores_array = np.zeros((2*steps+steps_coupling,2*N))
-
-
-print("3. Evolving LEFT Forward...")
-for s in range(steps):
-    # dt is POSITIVE
-    #state = rk4_step_masked(state, dt, params, mask_L)
-    #state_with_observer = rk4_step_masked_observer(state_with_observer, dt, params, mask_L_observer)
-    state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=True, evolve_right=False)
-    q_obs,p_obs = state_with_observer
-    scores = signal_map_vs_observer(q_obs, p_obs, 2*N)
-    scores_array[s,:] = scores/np.linalg.norm(scores) 
-    total_energy.append(sum(total_energy_LR_obs(q_obs,p_obs,N,params["m_squared"],params["k_coupling"]))/M)
-    #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
-    #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
-    #mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))    
-    #current_dq = get_derivatives_masked(state,params,mask_L)[0]    
-    #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
-    #otoc_history[s,:]=otoc_vals
 
 
 
-
-print("4. Coupling Left and Right...")
-
-
-carrier_indices1 = np.arange(0,insert_idx)
-carrier_indices2 = np.arange(insert_idx+1,N)
-carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
-
-bdy_1_idx = np.arange(N)
-bdy_2_idx = np.arange(N,2*N)
-
-n_total = 2*N
-H_coupling = np.zeros((2*n_total, 2*n_total))
-mu = 1
-
-omega0 = np.sqrt(params["m_squared"] + 2*params["k_coupling"])
-
-
-for j in carrier_indices:
-    x_L = bdy_1_idx[j]
-    x_R = bdy_2_idx[j]
-    # x coupling
-    H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu * omega0/ 2
-    # p coupling
-    H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+Gamma_TFD = tfd_cov(N,k=params["k_coupling"],m_squared=params["m_squared"])
+q,p = sample_tfd_state(Gamma_TFD, M, N)
+state_TFD = (q, p)
 
 
 
-#state_with_observer = apply_quadratic_coupling_exact(state=state_with_observer, G=H_coupling_obs, tau = 3)
+site_fidelities_symp=[]
+site_fidelities_flip=[]
+block_sizes = [1]
+#block_sizes = [1,2,4,6,8,10]
 
+N = 10
+obs_idx = 2*N
+insert_idx = 1
+teleported_idx = insert_idx+N
+bdy_len = N
 
+H_coupling=coupling_hamiltonian(N,mu=1,insert_idx=insert_idx,params=params)
 
-k = params["k_coupling"]
-m_squared = params["m_squared"]
+Ss = np.linspace(-1.5, 1.5, 3)
+Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
+input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
-HL = np.zeros((2*N,2*N))
-for i in range(2*N):
-    if i < N-1:
-        HL[i, i] = m_squared + 2 * k  # on-site + two neighbors
-        HL[i,i+1] = -k
-        HL[i+1, i] = -k    
-    if i == N-1:
-        HL[i,0] = -k
-        HL[0,i] = -k 
-        HL[i,i] = m_squared + 2 * k 
-    if i > N-1:
-        HL[i,i] = 1
+sites=np.arange(N,2*N)
 
-HL_full = np.zeros((4*N, 4*N))
-HL_full[np.ix_(range(N), range(N))] = HL[:N, :N]                     # x-x
-HL_full[np.ix_(range(N), range(2*N, 3*N))] = HL[:N, N:]             # x-p
-HL_full[np.ix_(range(2*N, 3*N), range(N))] = HL[N:, :N]             # p-x
-HL_full[np.ix_(range(2*N, 3*N), range(2*N, 3*N))] = HL[N:, N:]      # p-p
-
-
-HR_full = np.zeros((4*N, 4*N))
-HR_full[np.ix_(range(N, 2*N), range(N, 2*N))] = HL[:N, :N]
-HR_full[np.ix_(range(N, 2*N), range(3*N, 4*N))] = HL[:N, N:]
-HR_full[np.ix_(range(3*N, 4*N), range(N, 2*N))] = HL[N:, :N]
-HR_full[np.ix_(range(3*N, 4*N), range(3*N, 4*N))] = HL[N:, N:]
-
-H_LR = HL_full+HR_full
-
-H_coupling += H_LR
-
-H_coupling_obs = pad_matrix_for_observer(H_coupling)
-
-for s in range(steps_coupling):
-    #state_with_observer = apply_quadratic_coupling_exact(state=state_with_observer, G=H_coupling_obs, tau = dt)
-    state_with_observer = step_coupling_window_twa(state_with_observer, dt, params, H_coupling_obs)
-    q_obs,p_obs = state_with_observer
-    scores = signal_map_vs_observer(q_obs, p_obs, 2*N)
-    scores_array[steps+s,:] = scores/np.linalg.norm(scores)
-    total_energy.append(energy_quadratic_from_samples(q_obs[:, :2*N], p_obs[:, :2*N], H_coupling))
-
-    #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
-    #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
-    #mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
-    #current_dq = get_derivatives_masked(state,params,mask_L)[0]    
-    #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
-    #otoc_history[s,:]=otoc_vals
-
-
-
-
-# The wormhole interaction V = exp(i * g * Sum qL qR)
-"""
-g = 0.5
-q_curr, p_curr = state
-
-q0 = q_curr.copy()
-p0 = p_curr.copy()
-
-q_L = q_curr[:, :N]
-q_R = q_curr[:, N:]
-
-
-# Shift momenta
-p_curr[:, :N] += g * q_R
-p_curr[:, N:2*N] += g * q_L
- 
-p_curr[:, insert_idx] = p0[:,insert_idx]
-p_curr[:, insert_idx+N] = p0[:,insert_idx+N]
-
-state = (q_curr, p_curr)
-"""
-#q_curr,p_curr = state_with_observer
-#state_with_observer = apply_LR_coupling_kick_obs_safe(state_with_observer,g=5,N=N)
-
-print("5. Evolving RIGHT Forward...")
-# Usually we evolve the whole system now to see the signal emerge
-for s in range(steps):
-    #state = rk4_step_masked(state, dt, params, mask_R)
-    #state_with_observer = rk4_step_masked_observer(state_with_observer, dt, params, mask_R_observer)    
-    state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=False, evolve_right=True)
-   
-    q_obs,p_obs = state_with_observer   
-    scores = signal_map_vs_observer(q_obs, p_obs, 2*N)
-    scores_array[steps+steps_coupling+s,:] = scores/np.linalg.norm(scores)
-    total_energy.append(sum(total_energy_LR_obs(q_obs,p_obs,N,params["m_squared"],params["k_coupling"]))/M)
-
-    #mut_info_L.append(mut_info_observer_ksg(q_obs, p_obs, 0, N, 2*N, k=5))
-    #mut_info_R.append(mut_info_observer_ksg(q_obs, p_obs, N, 2*N, 2*N, k=5))    
-
-    #mut_info_L.append(mut_info_observer(q_obs, p_obs, 0, N, 2*N))
-    #mut_info_R.append(mut_info_observer(q_obs, p_obs, N, 2*N, 2*N))    
-    #tot_mut_info_obs.append(mut_info_observer(q_obs, p_obs, 0, 2*N, 2*N))        
-    #current_dq = get_derivatives_masked(state,params,mask_R)[0]
-    #otoc_vals = np.mean(current_dq**2, axis=0) # Shape (N,)
-    #otoc_history[s+steps,:]=otoc_vals
-
-# --- Plotting ---
-
-times = [0,steps//2,steps-1,steps+steps_coupling//2,steps+steps_coupling-1,3/2*steps+steps_coupling,2*steps+steps_coupling-1]
-
-for t in range(len(times)):
-    plt.plot(np.arange(2*N),scores_array[int(times[t]),:],label=f"t={times[t]}")
-plt.xlabel("site")
-plt.ylabel("correlation with observer")
-plt.legend()
-plt.show()
-
-
-
-print("stop")
-
-time_axis = np.concatenate((np.arange(steps),np.arange(steps,steps+steps_coupling),np.arange(steps+steps_coupling,2*steps+steps_coupling))) * dt
-plt.plot(time_axis,total_energy)
-plt.xlabel("time")
-plt.ylabel("energy")
-plt.show()
+for f in range(len(sites)):
+    #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
+    #plt.plot(block_sizes,Fs,label=sites[f])
+    Fs,Ff= fidelity_vs_block_size(
+    block_sizes=block_sizes,
+    obs_idx=2*N,
+    insert_idx=insert_idx,
+    center_idx=sites[f]-N,
+    input_ensemble=input_ensemble,   # list of (s, theta) you use for fitting
+    t0=t0,
+    t_couple=t_couple,
+    dt=dt,
+    state_TFD=state_TFD,
+    H_coupling=H_coupling,
+    params=params)
+    site_fidelities_symp.append(Fs)
+    site_fidelities_flip.append(Ff)
 
 """
-plt.plot(time_axis,mut_info_L,color="black",label="left")
-plt.plot(time_axis,mut_info_R,color="red",label="right")
-plt.plot(time_axis,tot_mut_info_obs,color="blue",label="total")
-plt.xlabel("time")
-plt.ylabel("mutual information")
-plt.legend()
-plt.show()
-"""
-
-def compute_MI_with_observer(Gamma, observer_idx, target_indices):
-    # Gamma: 2n x 2n covariance matrix
-    Gamma_obs = extract_subsystem_covariance(Gamma, [observer_idx])
-    Gamma_target = extract_subsystem_covariance(Gamma, target_indices)
-    Gamma_joint = extract_subsystem_covariance(Gamma, target_indices + [observer_idx])
-    
-    S_obs = von_neumann_entropy_alt(Gamma_obs)
-    S_target = von_neumann_entropy_alt(Gamma_target)
-    S_joint = von_neumann_entropy_alt(Gamma_joint)
-    
-    return S_obs + S_target - S_joint
-
-
-def mut_info_vs_segments(Gamma,center_idx,n_one_side):
-    N = n_one_side
- 
-    mut_info_insert_regions = []
-    mut_info_telep_regions = []
-
-    lengths_array = np.linspace(1,N // 2,N // 2)
-
-    observer_idx = 2*N
-    n_L = n_one_side
-    n = 2*N
-
-    for i in range(1,lengths_array.shape[0]):
-        #if i == 0:
-        #segment_telep = [teleported_idx]
-        if center_idx - i >= 0 and center_idx + i < N:
-            segment_insert = np.arange(center_idx - i, center_idx + i+1)
-        if center_idx - i < 0:
-            diff = np.abs(center_idx - i)
-            segment_insert_1 = np.arange(N-diff,N)
-            segment_insert_2 = np.arange(0,center_idx+i+1)
-            segment_insert = np.concatenate((segment_insert_1,segment_insert_2))
-        if center_idx + i >= N:
-            diff = center_idx + i - N
-            segment_insert_1 = np.arange(center_idx-i,N)
-            segment_insert_2 = np.arange(0,diff+1)
-            segment_insert = np.concatenate((segment_insert_1,segment_insert_2))
-        segment_insert = np.ndarray.tolist(segment_insert)
-        mut_info_insert_regions.append(compute_MI_with_observer(Gamma, observer_idx, segment_insert))
-        if center_idx  - i >= 0  and center_idx  + i < N:
-            segment_telep = np.arange(center_idx + N - i, center_idx + N + i+1)
-        if center_idx - i < 0 :
-            diff = np.abs(center_idx - i)
-            segment_telep_1 = np.arange(2*N-diff,2*N)
-            segment_telep_2 = np.arange(N ,center_idx + N + i+1)
-            segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
-        if center_idx + i >= N:
-            diff = center_idx + i - N
-            segment_telep_1 = np.arange(center_idx + N - i,2*N)
-            segment_telep_2 = np.arange(N,N + diff+1)
-            segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
-        segment_telep = np.ndarray.tolist(segment_telep)
-        mut_info_telep_regions.append(compute_MI_with_observer(Gamma, observer_idx, segment_telep))
-
-
-
-    mut_info_insert_regions.append(compute_MI_with_observer(Gamma, observer_idx, list(range(n_L))))
-    mut_info_telep_regions.append(compute_MI_with_observer(Gamma, observer_idx, list(range(n_L,n))))
-
-
-
-    full_lengths_array = 2 * lengths_array + 1
-    full_lengths_array[-1] = N    
-
-    Gamma_2mode = two_mode_squeezed_state(r=1)
-
-    plt.plot(full_lengths_array,mut_info_insert_regions,color='k',label = "insert side")
-    plt.plot(full_lengths_array,mut_info_telep_regions,color='red', label ="teleport side")
-    plt.axhline(compute_MI_with_observer(Gamma_2mode,1,[0]), color = "blue", label = "total mutual info with observer")
-    plt.xlabel("length of segment")
-    plt.ylabel("mutual info with observer")
-    plt.title("mutual information of segments with observer")
-    plt.legend()
-    plt.show()
-
-q_obs,p_obs = state_with_observer
-X_final = np.hstack([q_obs, p_obs])    
-Gamma_final_with_observer = np.cov(X_final, rowvar=False) 
-
-mut_info_vs_segments(Gamma=Gamma_final_with_observer,center_idx=N//2,n_one_side=N)
-
-
-
-
-
-
-plt.figure(figsize=(10, 6))
-for site in sites_to_watch:
-    plt.plot(time_axis, otoc_history[:,site],label=f"site {site}")
-
-plt.yscale('log') # Log scale to see exponential growth (Lyapunov regime)
-plt.xlabel('Time')
-plt.ylabel('OTOC (Operator Growth)')
-plt.title(r'Scrambling with $\lambda$={params["lam"]}')
-plt.legend()
-plt.grid(True, which="both", ls="-")
-plt.show()
-
-# --- 6. Check Fidelity ---
-# Extract the Right side of the final state and compare to target
-
-#target_site_idx = 0 
-
-fidelity_list = []
-for i in range(2*N):
-    target_site_idx = i
-    fidelity_list.append(compute_fidelity(
-    q_R_samples = state[0][:, target_site_idx], 
-    p_R_samples = state[1][:, target_site_idx], 
-    target_q = 0,      # You didn't shift q
-    target_p  = epsilon,  # You shifted p by epsilon
-    sigma_vac = 0.5
-))
-
-plt.plot(np.arange(2*N),fidelity_list)
+plt.xlabel("decoder block size")
 plt.ylabel("fidelity")
+plt.legend()
+plt.show()
+"""  
+
+
+plt.plot(sites,site_fidelities_symp,label="symplectic")
+plt.plot(sites,site_fidelities_flip,label="allow flip")
 plt.xlabel("site")
+plt.ylabel("fidelity")
+plt.legend()
 plt.show()
 
-#print(f"Teleportation Fidelity: {fidelity:.4f}")
-
-print("Protocol Complete.")
-
-
-
-HL = nearest_neigbor_hamiltonian(k=k,m_squared=m_squared,)
-
+print("done")
 

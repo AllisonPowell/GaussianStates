@@ -43,8 +43,8 @@ def connect_1_to_1_scaled(ax, lower_nodes, upper_nodes, positions_3d, alpha=0.55
 
 
 # Parameters
-L = 7
-Lh = 5
+L = 4
+Lh = 3
 n_tube = 3
 tube_radius = 0.5
 top_z = 0.3
