@@ -524,7 +524,7 @@ def gaussian_purification(V):
 #bdy_1_idx = np.array([lookup[x] for x in bdy_1])
 #bdy_2_idx = np.array([lookup[x] for x in bdy_2])
 
-N=10
+N=3
 bdy_len = N
 bdy_1_idx = np.arange(bdy_len)
 bdy_2_idx = np.arange(bdy_len,2*bdy_len)
@@ -746,7 +746,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         Gamma_TFD = gaussian_purification(Gamma_reconstructed)
 
-        t0 = 4
+        t0 = 2
 
 
     else:
@@ -963,7 +963,6 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
 
     Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
-    print(extract_subsystem_covariance(Gamma_final,[11]))
     return Gamma_final_observer, Gamma_final, Gamma_forward_observer, Gamma_forward
 
 def orthogonal_with_first_col(v, eps=1e-12):
@@ -2932,7 +2931,7 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 10
+N = 3
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
@@ -3098,12 +3097,12 @@ mut_info_vs_segments(s=0,theta=0,n_one_side=64,center_idx_telep=32,m=8,insert_id
 
 
 #block_sizes = [1,2,4,8,12,16,20,24,28,30,31,32,33,34,36,40,44,48,52,56,60,64]
-block_sizes = [1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]
-#block_sizes = [1]
+#block_sizes = [1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]
+block_sizes = [1]
 obs_idx = 128
-insert_idx = 32
-teleported_idx = 32 + 64
-bdy_len = 64
+insert_idx = 1
+teleported_idx = 1 + 3
+bdy_len = 1
 """
 input_ensemble = [(0.0,0), (.5,0), (-.5,np.pi/4),
                  (1,np.pi/4), (-1,np.pi/2), (.4,np.pi/2)]
@@ -3117,7 +3116,7 @@ for i in range(60):
 
 
 
-Fs,Ff,F_passive_symp_test,F_passive_flip_test,s1_Y_on,s2_Y_on= fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=64,center_idx=10,wormhole=False)
+Fs,Ff,F_passive_symp_test,F_passive_flip_test,s1_Y_on,s2_Y_on= fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=3,center_idx=10,wormhole=False)
 
 
 #plt.rc('font', size=25) 

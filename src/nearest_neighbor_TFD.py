@@ -904,7 +904,7 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 ########
 
 
-N = 20
+N = 6
 k = 5
 m_squared = 13
 HL = np.zeros((N,N))
@@ -963,11 +963,11 @@ S_tot = von_neumann_entropy_alt(Gamma_TFD)
 # investigate spreading
 ###########
 
-t0 = 4
+t0 = 2
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
-#plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
+plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
 
 
 

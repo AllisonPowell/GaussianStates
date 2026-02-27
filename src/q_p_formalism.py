@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import inv, expm, sqrtm, schur, block_diag, eigh, det, polar
 from thewalrus.symplectic import xpxp_to_xxpp, sympmat
 from sklearn.neighbors import NearestNeighbors
+from matplotlib.patches import Ellipse
 
 
 def symplectic_form(n):
@@ -1038,6 +1039,40 @@ def step_coupling_window_twa(state, dt, params, G_cpl_obs):
     # 3) half step nonlinear ring dynamics
     state = step_verlet_LR_obs_safe(state, 0.5*dt, params, evolve_left=True, evolve_right=True)
     return state
+
+
+import numpy as np
+
+def wigner_overlap_with_gaussian_target(q, p, V_target, d_target=None):
+    """
+    Estimate Tr(rho_out rho_target) using Monte Carlo over output Wigner samples (q,p).
+
+    q, p: arrays of shape (M,) or (M,1) for ONE mode
+    V_target: 2x2 covariance of target in (q,p) ordering (vacuum is 0.5*I)
+    d_target: length-2 mean [q0, p0] (default 0)
+    Returns: overlap in [0,1] if target is pure and out is physical.
+    """
+    q = np.asarray(q).reshape(-1)
+    p = np.asarray(p).reshape(-1)
+    M = q.shape[0]
+    z = np.stack([q, p], axis=1)  # (M,2)
+
+    if d_target is None:
+        d = np.zeros(2)
+    else:
+        d = np.asarray(d_target).reshape(2)
+
+    V = 0.5*(V_target + V_target.T)
+    Vinv = np.linalg.inv(V)
+    detV = np.linalg.det(V)
+
+    dz = z - d[None, :]
+    # quadratic form (z-d)^T Vinv (z-d) for each sample
+    quad = np.einsum("bi,ij,bj->b", dz, Vinv, dz)
+
+    # Tr(rho_out rho_tar) = average[ (1/sqrt(detV)) * exp(-0.5*quad) ]
+    overlap = np.mean((1.0/np.sqrt(detV)) * np.exp(-0.5*quad))
+    return float(overlap)
 
 
 # --- Simulation Setup ---

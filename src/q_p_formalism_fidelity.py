@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import inv, expm, sqrtm, schur, block_diag, eigh, det, polar
 from thewalrus.symplectic import xpxp_to_xxpp, sympmat
 from sklearn.neighbors import NearestNeighbors
+from matplotlib.patches import Ellipse
 
 
 def symplectic_form(n):
@@ -812,7 +813,23 @@ def ring_force(q_ring, m2, k, lam):
     spring = k * (q_left + q_right - 2.0*q_ring)
     return -(m2*q_ring) - 4.0*lam*(q_ring**3) + spring
 
-def step_verlet_LR(state, dt, params, evolve_left: bool, evolve_right: bool):
+
+def ring_force_cubic(q_ring, m2, k, lam):
+    """
+    q_ring: (M, N) for ONE ring.
+    Returns F(q) = dp/dt for that ring under:
+      V = 1/2 m2 Σ q^2 + (k/2) Σ (q_i - q_{i+1})^2 + lam Σ q^3
+    """
+    q_left  = np.roll(q_ring,  1, axis=1)
+    q_right = np.roll(q_ring, -1, axis=1)
+    spring = k * (q_left + q_right - 2.0*q_ring)
+    return -(m2*q_ring) - 3.0*lam*(q_ring**2) + spring
+
+
+
+
+
+def step_verlet_LR(state, dt, params, evolve_left: bool, evolve_right: bool, kick: bool):
     """
     Symplectic step for two decoupled rings.
     state: (q, p), each shape (M, 2N) with ordering [L(0..N-1), R(0..N-1)].
@@ -828,12 +845,18 @@ def step_verlet_LR(state, dt, params, evolve_left: bool, evolve_right: bool):
 
     # --- half kick ---
     if evolve_left:
-        pL_half = pL + 0.5*dt*ring_force(qL, m2, k, lam)
+        if kick==True:
+            pL_half = pL + 0.5*dt*ring_force(qL, m2, k, lam)
+        else:
+            pL_half = pL + 0.5*dt*ring_force(qL, m2, k, 0)
     else:
         pL_half = pL
 
     if evolve_right:
-        pR_half = pR + 0.5*dt*ring_force(qR, m2, k, lam)
+        if kick==True:
+            pR_half = pR + 0.5*dt*ring_force(qR, m2, k, lam)
+        else:
+            pR_half = pR + 0.5*dt*ring_force(qR, m2, k, 0)
     else:
         pR_half = pR
 
@@ -850,12 +873,18 @@ def step_verlet_LR(state, dt, params, evolve_left: bool, evolve_right: bool):
 
     # --- second half kick ---
     if evolve_left:
-        pL_new = pL_half + 0.5*dt*ring_force(qL_new, m2, k, lam)
+        if kick == True:
+            pL_new = pL_half + 0.5*dt*ring_force(qL_new, m2, k, lam)
+        else:
+            pL_new = pL_half + 0.5*dt*ring_force(qL_new, m2, k, 0)
     else:
         pL_new = pL_half
 
     if evolve_right:
-        pR_new = pR_half + 0.5*dt*ring_force(qR_new, m2, k, lam)
+        if kick==True:
+            pR_new = pR_half + 0.5*dt*ring_force(qR_new, m2, k, lam)
+        else:
+          pR_new = pR_half + 0.5*dt*ring_force(qR_new, m2, k, 0)  
     else:
         pR_new = pR_half
 
@@ -863,7 +892,7 @@ def step_verlet_LR(state, dt, params, evolve_left: bool, evolve_right: bool):
     p_new = np.hstack([pL_new, pR_new])
     return (q_new, p_new)
 
-def step_verlet_LR_obs_safe(state, dt, params, evolve_left: bool, evolve_right: bool):
+def step_verlet_LR_obs_safe(state, dt, params, evolve_left: bool, evolve_right: bool, kick: bool):
     """
     Symplectic velocity-Verlet step for two decoupled rings + frozen observer.
 
@@ -888,10 +917,15 @@ def step_verlet_LR_obs_safe(state, dt, params, evolve_left: bool, evolve_right: 
     p_half = p.copy()
 
     if evolve_left:
-        p_half[:, L] += 0.5 * dt * ring_force(q[:, L], m2, k, lam)
+        if kick==True:
+            p_half[:, L] += 0.5 * dt * ring_force(q[:, L], m2, k, lam)
+        else:
+            p_half[:, L] += 0.5 * dt * ring_force(q[:, L], m2, k, 0)
     if evolve_right:
-        p_half[:, R] += 0.5 * dt * ring_force(q[:, R], m2, k, lam)
-
+        if kick==True:
+            p_half[:, R] += 0.5 * dt * ring_force(q[:, R], m2, k, lam)
+        else:
+            p_half[:, R] += 0.5 * dt * ring_force(q[:, R], m2, k, 0)
     # observer untouched:
     # p_half[:, obs] unchanged
 
@@ -908,9 +942,15 @@ def step_verlet_LR_obs_safe(state, dt, params, evolve_left: bool, evolve_right: 
     # --- second half kick ---
     p_new = p_half.copy()
     if evolve_left:
-        p_new[:, L] += 0.5 * dt * ring_force(q_new[:, L], m2, k, lam)
+        if kick==True:
+            p_new[:, L] += 0.5 * dt * ring_force(q_new[:, L], m2, k, lam)
+        else:
+            p_new[:, L] += 0.5 * dt * ring_force(q_new[:, L], m2, k, 0)
     if evolve_right:
-        p_new[:, R] += 0.5 * dt * ring_force(q_new[:, R], m2, k, lam)
+        if kick==True:
+           p_new[:, R] += 0.5 * dt * ring_force(q_new[:, R], m2, k, lam) 
+        else:
+            p_new[:, R] += 0.5 * dt * ring_force(q_new[:, R], m2, k, 0)
 
     # observer untouched:
     # p_new[:, obs] unchanged
@@ -1057,13 +1097,13 @@ def energy_quadratic_from_samples(q, p, G):
 
 def step_coupling_window_twa(state, dt, params, G_cpl_obs):
     # 1) half step nonlinear ring dynamics
-    state = step_verlet_LR_obs_safe(state, 0.5*dt, params, evolve_left=True, evolve_right=True)
+    state = step_verlet_LR_obs_safe(state, 0.5*dt, params, evolve_left=True, evolve_right=True,kick=False)
 
     # 2) exact linear coupling map
     state = apply_quadratic_coupling_exact(state, G=G_cpl_obs, tau=dt)
 
     # 3) half step nonlinear ring dynamics
-    state = step_verlet_LR_obs_safe(state, 0.5*dt, params, evolve_left=True, evolve_right=True)
+    state = step_verlet_LR_obs_safe(state, 0.5*dt, params, evolve_left=True, evolve_right=True,kick=False)
     return state
 
 
@@ -1086,7 +1126,11 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
 
 
     for t in range(steps):
-        state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False)
+        if t%20 == 0:
+            state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False,kick=True)
+        else:
+            state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False,kick=False)
+    
 
     #Gamma_2mode = two_mode_squeezed_state(r=1)
 
@@ -1104,7 +1148,11 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
 
     for t in range(steps):
         #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=True, evolve_right=False)
-        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False)
+        if t%20==0:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=True)
+        else:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=False)
+
         #H_coupling_obs = pad_matrix_for_observer(H_coupling)
 
     for t in range(steps_coupling):
@@ -1113,7 +1161,11 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
         #state_no_observer = step_coupling_window_twa_no_obs(state_no_observer, dt, params, H_coupling)     
     for t in range(steps):   
         #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=False, evolve_right=True)
-        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True)
+        if t%20==0:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=True)
+        else:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=False)
+           
     return state_no_observer#,state_with_observer
     
 def coupling_hamiltonian(N,mu,insert_idx,params):
@@ -1127,7 +1179,7 @@ def coupling_hamiltonian(N,mu,insert_idx,params):
 
     n_total = 2*N
     H_coupling = np.zeros((2*n_total, 2*n_total))
-    mu = 1
+
 
     omega0 = np.sqrt(params["m_squared"] + 2*params["k_coupling"])
 
@@ -1415,6 +1467,50 @@ def decompose_X(X):
 
     return O1, loss, squeeze, O2
 
+import numpy as np
+
+def wigner_overlap_with_gaussian_target(q, p, V_target, d_target=None):
+    """
+    Estimate Tr(rho_out rho_target) using Monte Carlo over output Wigner samples (q,p).
+
+    q, p: arrays of shape (M,) or (M,1) for ONE mode
+    V_target: 2x2 covariance of target in (q,p) ordering (vacuum is 0.5*I)
+    d_target: length-2 mean [q0, p0] (default 0)
+    Returns: overlap in [0,1] if target is pure and out is physical.
+    """
+    q = np.asarray(q).reshape(-1)
+    p = np.asarray(p).reshape(-1)
+    M = q.shape[0]
+    z = np.stack([q, p], axis=1)  # (M,2)
+
+    if d_target is None:
+        d = np.zeros(2)
+    else:
+        d = np.asarray(d_target).reshape(2)
+
+    V = 0.5*(V_target + V_target.T)
+    Vinv = np.linalg.inv(V)
+    detV = np.linalg.det(V)
+
+    dz = z - d[None, :]
+    # quadratic form (z-d)^T Vinv (z-d) for each sample
+    quad = np.einsum("bi,ij,bj->b", dz, Vinv, dz)
+
+    # Tr(rho_out rho_tar) = average[ (1/sqrt(detV)) * exp(-0.5*quad) ]
+    overlap = np.mean((1.0/np.sqrt(detV)) * np.exp(-0.5*quad))
+    return float(overlap)
+
+def plot_wigner_ellipse(Gamma_mode, ax, label='', color='blue'):
+    from scipy.linalg import eigh
+    W = Gamma_mode[:2, :2].real  # just x, p block
+    vals, vecs = eigh(W)
+    width, height = 2 * np.sqrt(vals)
+    angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+    ellipse = Ellipse(xy=(0, 0), width=width, height=height, angle=angle,
+                      edgecolor=color, fc='None', lw=2, label=label)
+    ax.add_patch(ellipse)
+
+
 def fidelity_vs_block_size(
     block_sizes,
     obs_idx,
@@ -1446,6 +1542,8 @@ def fidelity_vs_block_size(
         #O, v = build_passive_decoder_from_observer(V_OR_xxpp, m)
 
         Vins, Vouts = [], []
+        q_outs,p_outs = [],[]
+
 
         for s, theta in input_ensemble:
             # Run your usual protocol (NO observer) to get global Gamma_final
@@ -1464,19 +1562,42 @@ def fidelity_vs_block_size(
             X_no_obs = np.hstack([q_no_obs, p_no_obs])
             sigma_no_obs = np.cov(X_no_obs, rowvar=False) 
 
+            q_outs.append(q_no_obs[:,center_idx+N])
+            p_outs.append(p_no_obs[:,center_idx+N])
+
             #q_with_obs,p_with_obs = state_with_obs
             #X_with_obs = np.hstack([q_with_obs, p_with_obs])
             #sigma_with_obs = np.cov(X_with_obs, rowvar=False) 
 
             if len(block_sizes)==1:
                 Vout = extract_subsystem_covariance(sigma_no_obs,[center_idx+N])
-            print(center_idx,extract_subsystem_covariance(sigma_no_obs,[11]))
+            #print(center_idx,extract_subsystem_covariance(sigma_no_obs,[11]))
 
 
 
             # Your input Vin is the inserted mode covariance (2x2)
             Vin = make_input_covariance(s, theta)  # returns 2x2 in (x,p)
 
+            #f = wigner_overlap_with_gaussian_target(q_no_obs[:,center_idx+N], p_no_obs[:,center_idx+N], Vin, d_target=None)
+            """
+            if center_idx == 1:
+                fig, ax = plt.subplots()
+                plot_wigner_ellipse(Vin, ax, label='Input', color='green')            
+                plot_wigner_ellipse(Vout, ax, label='Output', color='red')
+
+                ax.set_xlim(-2.5, 2.5)
+                ax.set_ylim(-2.5, 2.5)
+                ax.set_xlabel("Position Quadrature")
+                ax.set_ylabel("Momentum Quadrature")
+                ax.set_aspect('equal')
+                ax.legend()
+                plt.title("Input vs Output Wigner Ellipses")
+                plt.grid(True)
+                plt.show()
+            """
+           
+            #print(center_idx,"f=",f)
+            #wigner_overlap.append(f)
             Vins.append(Vin)
             Vouts.append(Vout)
 
@@ -1484,6 +1605,7 @@ def fidelity_vs_block_size(
 
         # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
         X, Y = fit_gaussian_channel(Vins, Vouts)
+
 
 
         rot1,loss,squeeze,rot2=decompose_X(X)
@@ -1502,6 +1624,15 @@ def fidelity_vs_block_size(
         Fms.append(Fs)
         Fmf.append(Ff)
 
+        #wigner_overlap=[]
+        #for v in range(len(Vouts)):  
+            #f = wigner_overlap_with_gaussian_target(q_outs[v], p_outs[v] Vin, d_target=None)
+
+
+
+        
+        #wigner_f = sum(wigner_overlap)/len(wigner_overlap)
+
 
     return np.array(Fms),np.array(Fmf)
 
@@ -1510,12 +1641,11 @@ def fidelity_vs_block_size(
 
 N = 10           # Number of sites in the ring
 M = 2000        # Number of trajectories (samples)
-params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.001, 'N_site': N}        # Total simulation time
-t0=4
+params = {'m_squared': 13, 'k_coupling': 5.0, "momentum":1,'lam': 0.2, 'N_site': N}        # Total simulation time
+t0 = 3.5636
 t_couple = 3
 dt = .005        # Time step
 steps = int(t0 / dt)
-t_couple = 3
 steps_coupling = int(t_couple/dt)
 insert_idx = 1
 
@@ -1529,6 +1659,8 @@ state_TFD = (q, p)
 
 site_fidelities_symp=[]
 site_fidelities_flip=[]
+wigner_fidelities = []
+
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
@@ -1540,12 +1672,12 @@ bdy_len = N
 
 H_coupling=coupling_hamiltonian(N,mu=1,insert_idx=insert_idx,params=params)
 
-Ss = np.linspace(-1.5, 1.5, 3)
+Ss = np.linspace(-1.5, 1.5, 4)
 Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
 sites=np.arange(N,2*N)
-
+"""
 for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
@@ -1563,7 +1695,7 @@ for f in range(len(sites)):
     params=params)
     site_fidelities_symp.append(Fs)
     site_fidelities_flip.append(Ff)
-
+"""
 """
 plt.xlabel("decoder block size")
 plt.ylabel("fidelity")
@@ -1572,9 +1704,39 @@ plt.show()
 """  
 
 
+"""
 plt.plot(sites,site_fidelities_symp,label="symplectic")
 plt.plot(sites,site_fidelities_flip,label="allow flip")
 plt.xlabel("site")
+plt.ylabel("fidelity")
+plt.legend()
+plt.show()
+"""
+
+times_evolve= np.linspace(3.4,3.7,12)
+time_fidelities_symp = []
+time_fidelities_flip = []
+for t in range(len(times_evolve)):
+    #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
+    #plt.plot(block_sizes,Fs,label=sites[f])
+    Fs,Ff= fidelity_vs_block_size(
+    block_sizes=block_sizes,
+    obs_idx=2*N,
+    insert_idx=insert_idx,
+    center_idx=insert_idx,
+    input_ensemble=input_ensemble,   # list of (s, theta) you use for fitting
+    t0=times_evolve[t],
+    t_couple=t_couple,
+    dt=dt,
+    state_TFD=state_TFD,
+    H_coupling=H_coupling,
+    params=params)
+    time_fidelities_symp.append(Fs)
+    time_fidelities_flip.append(Ff)
+
+plt.plot(times_evolve,time_fidelities_symp,label="symplectic")
+plt.plot(times_evolve,time_fidelities_flip,label="allow flip")
+plt.xlabel("times")
 plt.ylabel("fidelity")
 plt.legend()
 plt.show()
