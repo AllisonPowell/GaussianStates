@@ -408,8 +408,7 @@ def teleportation_protocol(
     n_steps = int(t_couple/dt)
     #C_coup = strang_coupling(C_fwd, H0_side, H_coupling, t_couple=t_couple, n_steps=n_steps, N_modes=N_modes,N_cutoff=N_cutoff)
     C_coup = strang_coupling_env_spectator(C_fwd, H0_side, H_coupling, t_couple, n_steps, left_dims, right_dims)
-    U_right_ext = np.kron(U_fwd, np.eye(N_cutoff))
-    C_fin = apply_right(C_coup, U_right_ext)
+    C_fin = apply_right_sys_only(C_coup, U_fwd, d_env=N_cutoff)
     psi_out, d_out, V_out = covariance_from_C(C_fin, N_modes_total, N_cutoff, x_full_env, p_full_env)
     return C_fin,V_in,V_out
 
@@ -883,15 +882,14 @@ def strang_coupling_env_spectator(
     U0_half = (-1j * H0_side * (dt/2)).expm().full()  # shape (d^3, d^3)
 
     # Extend right local step to include env as identity
-    U0_half_right = np.kron(U0_half, np.eye(d_env, dtype=np.complex128))  # (d^3*d_env, d^3*d_env)
-
+    
     # Extend interaction Hamiltonian to include env spectator
     H_int_ext = qt.tensor(H_int_6mode, qt.qeye(d_env))
 
     for _ in range(n_steps):
         # half local on both sides
         C = apply_left(C, U0_half)
-        C = apply_right(C, U0_half_right)
+        C = apply_right_sys_only(C, U0_half, d_env)
 
         # full interaction step on total space (now 7 modes)
         C = apply_Hint_step_sesolve_bipartite(
@@ -904,7 +902,7 @@ def strang_coupling_env_spectator(
 
         # half local again
         C = apply_left(C, U0_half)
-        C = apply_right(C, U0_half_right)
+        C = apply_right_sys_only(C, U0_half, d_env)
 
     return C
 
@@ -963,10 +961,29 @@ def apply_Hint_step_sesolve_bipartite(
     dims_total = left_dims + right_dims
 
     psi = Qobj(v, dims=[dims_total, [1]])  # ket on total modes
-    out = sesolve(H_int_ext, psi, [0, dt], progress_bar=True)
-    v2 = out.states[-1].full().ravel()
+
+
+    res = qt.sesolve(H_int_ext, psi, [0, dt], progress_bar=None)
+    v2 = res.states[-1].full().ravel()
 
     return C_from_vec(v2, D_L,D_R)  # returns (D_L, D_R)
+
+def apply_right_sys_only(C, U_sys, d_env):
+    """
+    Apply (U_sys ⊗ I_env) on the RIGHT of C without forming kron.
+    C: (D_L, d_right_sys*d_env)
+    U_sys: (d_right_sys, d_right_sys)
+    """
+    D_L, D_R = C.shape
+    d_right_sys = U_sys.shape[0]
+    assert D_R == d_right_sys * d_env
+
+    # view right index as (sys, env)
+    C3 = C.reshape(D_L, d_right_sys, d_env, order="F")
+    # apply U on sys index: C'_{α, s, e} = Σ_t C_{α, t, e} * (U_sys)_{s,t}
+    C3 = np.tensordot(C3, U_sys.T, axes=(1, 0))  # -> (D_L, d_env, d_right_sys)
+    C3 = np.moveaxis(C3, 2, 1)                   # -> (D_L, d_right_sys, d_env)
+    return C3.reshape(D_L, d_right_sys*d_env, order="F")
 
 def vec_from_C(C):
     # column-stacking convention (Fortran order), consistent with your earlier code
@@ -1449,13 +1466,13 @@ def fidelity_vs_block_size(
 
 # 1. Configuration
 N_modes = 3  # Modes per side (Ring: 0-1, 1-2, 2-0)
-N_cutoff = 8  # Lowered for N=3 to keep memory usage safe
+N_cutoff = 10  # Lowered for N=3 to keep memory usage safe
 beta = 1  # Inverse temperature (Tuning this is critical)
 lam = 0.0
 #chi = 0.15  # Non-Gaussianity (x^3)
 g_nn = 5  # Ring coupling strength
 g_int = 1  # L-R coupling strength
-t_scramble = 1  # Scrambling time (tune this for peak fidelity)
+t_scramble = 2  # Scrambling time (tune this for peak fidelity)
 t_couple = 2.5
 keep_states = 64
 insert_idx = 1
@@ -1553,7 +1570,6 @@ input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, determini
 
 sites = np.arange(N, 2 * N)
 
-
 for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
@@ -1574,6 +1590,14 @@ for f in range(len(sites)):
     site_fidelities_symp.append(Fs)
     site_fidelities_flip.append(Ff)
 
+"""
+plt.xlabel("decoder block size")
+plt.ylabel("fidelity")
+plt.legend()
+plt.show()
+"""
+
+
 plt.plot(sites,site_fidelities_symp,label="symplectic")
 plt.plot(sites,site_fidelities_flip,label="allow flip")
 plt.xlabel("site")
@@ -1584,17 +1608,7 @@ plt.savefig("plots/site_vs_fidelity.pdf")
 
 
 """
-plt.xlabel("decoder block size")
-plt.ylabel("fidelity")
-plt.legend()
-plt.show()
-"""
-
-
-
-
-"""
-times_evolve = np.linspace(1.4, 1.8, 5)
+times_evolve = np.linspace(1.2, 1.5, 4)
 time_fidelities_symp = []
 time_fidelities_flip = []
 for t in range(len(times_evolve)):
@@ -1625,6 +1639,5 @@ plt.legend()
 #plt.show()
 plt.savefig("plots/time_vs_fidelity.pdf")
 """
-
 
 print("done")

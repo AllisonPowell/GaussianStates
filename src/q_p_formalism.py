@@ -694,6 +694,11 @@ def gaussian_purification(V):
     return V_pure_phys_xxpp
 
 
+def purify_thermal(V):
+    omega2, O = np.linalg.eigh(V)
+
+
+
 def tfd_cov(N,k,m_squared):  
     HL = np.zeros((2*N,2*N))
         
@@ -711,7 +716,7 @@ def tfd_cov(N,k,m_squared):
             HL[i,i] = 1
 
     Gamma_reconstructed, nu, eps_reconstructed = build_thermal_state_from_modular_hamiltonian(HL)
-
+    #Gamma_reconstructed = build_quadratic_thermal_covariance(m_squared,k,N,1)
     Gamma_TFD = gaussian_purification(Gamma_reconstructed)
 
     return(Gamma_TFD)
@@ -1114,6 +1119,8 @@ mask_All = np.ones((1, 2 * N))
 # Here we use a simple uncorrelated vacuum approximation for demonstration
 
 Gamma_TFD = tfd_cov(N,k=params["k_coupling"],m_squared=params["m_squared"])
+#Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, beta=1, eps_omega=1e-15)
+
 q,p = sample_tfd_state(Gamma_TFD, M, N)
 state = (q, p)
 
