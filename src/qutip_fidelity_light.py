@@ -17,7 +17,8 @@ from qutip import (
     displace,
     squeeze,
     Qobj,
-    expand_operator
+    expand_operator,
+    entropy_vn
 )
 
 def symplectic_form(n):
@@ -1466,7 +1467,7 @@ def fidelity_vs_block_size(
 
 # 1. Configuration
 N_modes = 3  # Modes per side (Ring: 0-1, 1-2, 2-0)
-N_cutoff = 10  # Lowered for N=3 to keep memory usage safe
+N_cutoff = 8  # Lowered for N=3 to keep memory usage safe
 beta = 1  # Inverse temperature (Tuning this is critical)
 lam = 0.0
 #chi = 0.15  # Non-Gaussianity (x^3)
@@ -1474,7 +1475,7 @@ g_nn = 5  # Ring coupling strength
 g_int = 1  # L-R coupling strength
 t_scramble = 2  # Scrambling time (tune this for peak fidelity)
 t_couple = 2.5
-keep_states = 64
+keep_states = 200
 insert_idx = 1
 k = 5
 m_squared = 13

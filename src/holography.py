@@ -775,20 +775,6 @@ def build_ring_potential(N, k, m2):
         V[i, (i - 1) % N] = -k
     return 0.5 * (V + V.T)
 
-def laplacian_erdos_renyi(N, p, m2, seed, weighted=False):
-    rng = np.random.default_rng(seed)
-    A = (rng.random((N, N)) < p).astype(float)
-    A = np.triu(A, 1)
-    A = A + A.T
-    if weighted:
-        W = rng.random((N, N))
-        W = np.triu(W, 1)
-        W = W + W.T
-        A *= W
-    deg = np.sum(A, axis=1)
-    L = 2*np.diag(deg) - 2*A
-    M2 = m2*np.eye(N)
-    return L + M2
 
 def thermal_cov_one_side_from_modes(O, omega, beta):
     """
@@ -809,7 +795,7 @@ def _coth(x):
     # stable-ish coth for moderate x
     return 1.0 / np.tanh(x)
 
-def tfd_cov_ring_from_normal_modes(N, k, m2, V,beta, eps_omega=1e-15):
+def tfd_cov_ring_from_normal_modes(N, k, m2, beta, eps_omega=1e-15):
     """
     Construct the *pure* TFD covariance matrix for the ring Hamiltonian
         H = 1/2 p^T p + 1/2 x^T V x
@@ -821,8 +807,7 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, V,beta, eps_omega=1e-15):
     This construction is an *analytic* Gaussian purification mode-by-mode, so in exact arithmetic
     symplectic eigenvalues of the 4N-mode state are exactly 0.5.
     """
-    #V = build_ring_potential(N, k, m2)
-    p=.3
+    V = build_ring_potential(N, k, m2)
 
     # V = O diag(omega^2) O^T
     omega2, O = np.linalg.eigh(V)
@@ -1011,29 +996,62 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 
 N = 10
 k = 5
-m_squared = 2
-m2 = m_squared
-
-"""
+m_squared = 4
 HL = np.zeros((N,N))
-
 for i in range(N):
     if i < N//2-1:
         HL[i, i] = m_squared + 2 * k  # on-site + two neighbors
         HL[i,i+1] = -k
-        HL[i+1, i] = -k
-        #HL[i,i+2] = -k
-        #HL[i+2,i] = -k
-    #if i == N//2 - 2:
-        #HL[i,1] = -k
-        #HL[1,i] = -k        
+        HL[i+1, i] = -k  
     if i == N//2-1:
         HL[i,0] = -k
         HL[0,i] = -k 
         HL[i,i] = m_squared + 2 * k 
     if i > N//2-1:
         HL[i,i] = 1
-"""
+
+
+t=5
+Gamma0=np.eye(N)
+Omega = symplectic_form(N//2)
+S = expm(Omega @ HL * t)
+Gammat = S @ Gamma0 @ S.T 
+
+S0 = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[0]))
+S1 = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[1]))
+S2 = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[2]))
+S3 = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[3]))
+S4 = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[4]))
+
+sites=[0,1,2,3,4]
+
+for i in range(len(sites)):
+    SL = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(2+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(3+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(2+i)%5,(4+i)%5]))
+    SR = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(2+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(2+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(3+i)%5,(4+i)%5]))
+    if SL > SR:
+        print(1,i)
+
+for i in range(len(sites)):
+    SL = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(2+i)%5,(3+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5,(2+i)%5,(3+i)%5]))
+    SR = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(2+i)%5,(3+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(2+i)%5,(3+i)%5]))
+    if SL > SR:
+        print(2,i)
+
+for i in range(len(sites)):
+    SL = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(3+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5,(2+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(2+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(3+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5,(3+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(2+i)%5,(3+i)%5,(4+i)%5]))
+    SR = von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(2+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(3+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(3+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(1+i)%5,(2+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(1+i)%5,(3+i)%5,(4+i)%5]))+von_neumann_entropy_alt(extract_subsystem_covariance(Gammat,[(0+i)%5,(2+i)%5,(3+i)%5,(4+1)%5]))
+    if SL > SR:
+        print(3,i)
+
+print("done")
+
+
+
+
+
+print("stop")
+
+
 """
 plt.imshow(np.abs(HL),vmax = ".5")
 plt.colorbar()
@@ -1061,16 +1079,11 @@ plt.show()
 
 #Gamma_TFD = build_tfd_covariance(Gamma_reconstructed)
 #Gamma_TFD = gaussian_purification(Gamma_reconstructed)
-p=.3
 
-V = laplacian_erdos_renyi(N//2, p, m2, seed=1, weighted=False)
-
-Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V,beta=1,eps_omega=1e-15)
+Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, beta=1, eps_omega=1e-15)
 
 S_tot = von_neumann_entropy_alt(Gamma_TFD)
 
-HL = np.block([[V,np.zeros((N//2,N//2))],
-            [np.zeros((N//2,N//2)),np.eye(N//2)]])
 
 
 
@@ -1079,7 +1092,7 @@ HL = np.block([[V,np.zeros((N//2,N//2))],
 # investigate spreading
 ###########
 
-t0 = 8
+t0 = 2.8
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
@@ -1466,40 +1479,6 @@ plt.title("Mutual Information vs. Time")
 plt.legend()
 plt.show()
 
-"""
-teleported_idx = bdy_len + insert_idx
-
-
-mut_info_insert_regions = []
-mut_info_telep_regions = []
-
-lengths_array = np.linspace(1,Gamma_LR.shape[0] // 8,Gamma_LR.shape[0] // 8)
-for i in range(1,lengths_array.shape[0]):
-    #if i == 0:
-    #segment_telep = [teleported_idx]
-    segment_insert = np.arange(insert_idx - i, insert_idx + i+1)
-    segment_insert = np.ndarray.tolist(segment_insert)
-    mut_info_insert_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, segment_insert))
-    segment_telep = np.arange(teleported_idx - i, teleported_idx + i+1)
-    segment_telep = np.ndarray.tolist(segment_telep)
-    mut_info_telep_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, segment_telep))
-
-mut_info_insert_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, list(range(n_L))))
-mut_info_telep_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, list(range(n_L,n))))
-
-
-full_lengths_array = 2 * lengths_array + 1
-full_lengths_array[-1] = 64    
-plt.plot(full_lengths_array,mut_info_insert_regions,color='k',label = "insert side")
-plt.plot(full_lengths_array,mut_info_telep_regions,color='red', label ="teleport side")
-plt.axhline(compute_MI_with_observer(Gamma_LR,observer_idx,list(range(n_total))), color = "blue", label = "total mutual info with observer")
-plt.xlabel("length of segment")
-plt.ylabel("mutual info with observer")
-plt.title("mutual information of segments centered around teleported site")
-plt.legend()
-plt.show()
-
-"""
 
 
 mut_info_insert_regions = []
@@ -1561,81 +1540,5 @@ plt.legend()
 plt.show()
 
 
-Gamma_input = extract_mode_block(Gamma_2mode,0)
-
-flip = np.array([[-1,0],[0,-1]])
-
-site_fidelity = []
-site_fidelity_flip = []
-
-for j in range(N//2,N):
-    site_fidelity.append(gaussian_fidelity_mixed(Gamma_input,extract_subsystem_covariance(Gamma_LR,[j])))
-
-plt.plot(np.arange(N//2,N),site_fidelity)
-plt.xlabel("site")
-plt.ylabel("fidelity")
-plt.show()
-
-Gamma_teleported = extract_mode_block(Gamma_LR_wigner, teleported_idx-1)
-Gamma_teleported2 = extract_mode_block(Gamma_LR_no_insert, teleported_idx-1)
-
-
-print(0.5 * np.eye(2))
-Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
-print(Gamma_out_real)
-
-Gamma_out_real2 = 0.5 * (Gamma_teleported2 + Gamma_teleported2.conj().T)
-#print(Gamma_out_real2)
-
-
-
-telep_eigvals = symplectic_eigenvalues(Gamma_out_real)
-print("telep eigvals = ", telep_eigvals)
-
-
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-
-def plot_wigner_ellipse(Gamma_mode, ax, label='', color='blue'):
-    from scipy.linalg import eigh
-    W = Gamma_mode[:2, :2].real  # just x, p block
-    vals, vecs = eigh(W)
-    width, height = 2 * np.sqrt(vals)
-    angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
-    ellipse = Ellipse(xy=(0, 0), width=width, height=height, angle=angle,
-                      edgecolor=color, fc='None', lw=2, label=label)
-    ax.add_patch(ellipse)
-
-fig, ax = plt.subplots()
-#plot_wigner_ellipse(np.array([[0.5, 0], [0, 0.5]]), ax, label='Vacuum', color='blue')
-plot_wigner_ellipse(Gamma_squeezed, ax, label='Input', color='green')
-plot_wigner_ellipse(Gamma_out_real, ax, label='Output', color='red')
-plot_wigner_ellipse(Gamma_out_real2, ax, label='No Input', color='k')
-#plot_wigner_ellipse(Gamma_out_shift, ax, label='No Input', color='orange')
-
-ax.set_xlim(-4, 4)
-ax.set_ylim(-4, 4)
-ax.set_xlabel("Position Quadrature")
-ax.set_ylabel("Momentum Quadrature")
-ax.set_aspect('equal')
-ax.legend()
-plt.title("Input vs Output Wigner Ellipses")
-plt.grid(True)
-plt.show()
-
-
-
-
-
-Gamma_output = Gamma_out_real
-
-
-f = fidelity(Gamma_squeezed,Gamma_out_real)
-print("f=",f)
-
-fidelity = gaussian_fidelity_mixed(Gamma_input, Gamma_output)
-print(f"Fidelity of teleportation: {fidelity:.4f}")
-
-print(Gamma_out_real)
 
 print("done")

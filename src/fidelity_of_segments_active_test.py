@@ -516,6 +516,7 @@ def build_ring_potential(N, k, m2):
         V[i, i] = m2 + 2.0 * k
         V[i, (i + 1) % N] = -k
         V[i, (i - 1) % N] = -k
+
     return 0.5 * (V + V.T)
 
 
@@ -3021,7 +3022,7 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 3
+N = 10
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
