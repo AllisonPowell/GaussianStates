@@ -539,7 +539,7 @@ def _coth(x):
     # stable-ish coth for moderate x
     return 1.0 / np.tanh(x)
 
-def tfd_cov_ring_from_normal_modes(N, k, m2, beta, eps_omega=1e-15):
+def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
     """
     Construct the *pure* TFD covariance matrix for the ring Hamiltonian
         H = 1/2 p^T p + 1/2 x^T V x
@@ -551,7 +551,7 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, beta, eps_omega=1e-15):
     This construction is an *analytic* Gaussian purification mode-by-mode, so in exact arithmetic
     symplectic eigenvalues of the 4N-mode state are exactly 0.5.
     """
-    V = build_ring_potential(N, k, m2)
+    #V = build_ring_potential(N, k, m2)
 
     # V = O diag(omega^2) O^T
     omega2, O = np.linalg.eigh(V)
@@ -835,7 +835,9 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         #Gamma_reconstructed, nu, eps_reconstructed = build_thermal_state_from_modular_hamiltonian(HL)
 
         #Gamma_TFD = gaussian_purification(Gamma_reconstructed)
-        Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, beta=1, eps_omega=1e-15)
+        V = build_ring_potential(N//2, k, m_squared)
+        
+        Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
         t0 = 2
 
@@ -3022,7 +3024,7 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 10
+N = 3
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N

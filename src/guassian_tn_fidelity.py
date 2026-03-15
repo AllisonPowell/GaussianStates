@@ -1268,7 +1268,7 @@ def teleportation_protocol(s,theta,N,Nmax,insert_idx):
 
     # backward evolve left (dense)
 
-    H_left = build_ring_H(N,Nmax,m2,k,lam)
+    H_left = H_quad
 
     U_back = expm(1j*t_scramble*H_left)
 

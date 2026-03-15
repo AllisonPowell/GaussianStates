@@ -1009,9 +1009,9 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 ########
 
 
-N = 10
+N = 6
 k = 5
-m_squared = 2
+m_squared = 13
 m2 = m_squared
 
 """
@@ -1063,7 +1063,9 @@ plt.show()
 #Gamma_TFD = gaussian_purification(Gamma_reconstructed)
 p=.3
 
-V = laplacian_erdos_renyi(N//2, p, m2, seed=1, weighted=False)
+#V = laplacian_erdos_renyi(N//2, p, m2, seed=1, weighted=False)
+
+V = build_ring_potential(N//2, k, m2)
 
 Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V,beta=1,eps_omega=1e-15)
 
@@ -1079,7 +1081,7 @@ HL = np.block([[V,np.zeros((N//2,N//2))],
 # investigate spreading
 ###########
 
-t0 = 8
+t0 = 4
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
