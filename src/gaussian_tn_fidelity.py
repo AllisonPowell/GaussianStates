@@ -13,6 +13,19 @@ from tenpy.networks.site import BosonSite
 from tenpy.networks.mps import MPS
 from tenpy.linalg import np_conserved as npc
 
+import logging
+from tqdm import tqdm
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='LOG.log',
+    filemode='w'
+)
+
+def log_print(*args):
+    message = " ".join(map(str, args))
+    logging.info(message)
 
 
 from qutip import (
@@ -804,39 +817,46 @@ def embed_one_site(op,site,L,d):
 
 def embed_two_site(op, i, j, L, d):
     """
-    Embed a 2-site operator acting on sites i,j into an L-site Hilbert space.
-
-    Works for arbitrary i,j (not necessarily adjacent).
+    Embed a 2-site operator op acting on sites i,j into an L-site Hilbert space.
+    op should be shape (d*d, d*d), with basis ordering |a,b>.
     """
+    if i == j:
+        raise ValueError("i and j must be distinct.")
 
+    # If swapped, also swap tensor-leg ordering of the operator
     if i > j:
+        op4 = op.reshape(d, d, d, d)          # (out_i, out_j, in_i, in_j)
+        op4 = np.transpose(op4, (1, 0, 3, 2)) # swap sites
+        op = op4.reshape(d*d, d*d)
         i, j = j, i
 
-    # reshape op → (d,d,d,d)
-    op = op.reshape(d, d, d, d)
+    op4 = op.reshape(d, d, d, d)  # (out_i, out_j, in_i, in_j)
 
-    # build full operator tensor
-    dims = [d]*L
+    I = np.eye(d, dtype=complex)
+    O = np.zeros((d**L, d**L), dtype=complex)
 
-    O = np.zeros(dims + dims, dtype=complex)
+    for out_i in range(d):
+        for out_j in range(d):
+            for in_i in range(d):
+                for in_j in range(d):
+                    coeff = op4[out_i, out_j, in_i, in_j]
+                    if abs(coeff) < 1e-15:
+                        continue
 
-    for a in range(d):
-        for b in range(d):
-            for c in range(d):
-                for e in range(d):
+                    factors = [I.copy() for _ in range(L)]
 
-                    idx_in  = [slice(None)]*L
-                    idx_out = [slice(None)]*L
+                    Ei = np.zeros((d, d), dtype=complex)
+                    Ej = np.zeros((d, d), dtype=complex)
 
-                    idx_in[i] = a
-                    idx_in[j] = b
+                    Ei[out_i, in_i] = 1.0   # |out_i><in_i|
+                    Ej[out_j, in_j] = 1.0   # |out_j><in_j|
 
-                    idx_out[i] = c
-                    idx_out[j] = e
+                    factors[i] = Ei
+                    factors[j] = Ej
 
-                    O[tuple(idx_out + idx_in)] = op[c,e,a,b]
+                    O += coeff * kron_all(factors)
 
-    return O.reshape(d**L, d**L)
+    return O
 
 # ============================================================
 # Ring Hamiltonian
@@ -1243,40 +1263,7 @@ def apply_wormhole_coupling(
 # Protocol
 # ============================================================
 
-def teleportation_protocol(s,theta,N,Nmax,insert_idx):
-    beta = 1.0
-
-    m2 = 13
-    k = 5
-    lam = 0.0
-
-    g = 1
-
-    dt = 0.05
-    t_scramble = 4
-    t_couple = 3
-
-    insert_idx = 1
-
-    # build ring Hamiltonian
-
-    H_quad = build_ring_H(N,Nmax,m2,k,lam)
-
-    # build TFD
-
-    psi_tensor = build_tfd_tensor(H_quad,N,Nmax,beta)
-
-    # backward evolve left (dense)
-
-    H_left = H_quad
-
-    U_back = expm(1j*t_scramble*H_left)
-
-    psi_left = psi_tensor.reshape((Nmax+1)**N,-1)
-
-    psi_left = U_back @ psi_left
-
-    psi_tensor = psi_left.reshape([Nmax+1]*(2*N))
+def teleportation_protocol_old(s,theta,N,Nmax,insert_idx,psi_tensor):
 
     # insert gaussian mode
 
@@ -1286,11 +1273,11 @@ def teleportation_protocol(s,theta,N,Nmax,insert_idx):
         theta=theta    # phase rotation
     )
 
-    psi_tensor = insert_with_env(psi_tensor,insert_idx,phi)
+    psi_insert = insert_with_env(psi_tensor,insert_idx,phi)
 
     # convert to MPS
 
-    psi = tensor_to_mps(psi_tensor,Nmax)
+    psi = tensor_to_mps(psi_insert,Nmax)
 
     # forward evolve left
 
@@ -1331,78 +1318,364 @@ def teleportation_protocol(s,theta,N,Nmax,insert_idx):
 
     return psi
 
+def onsite_unitary(Nmax, dt, m2, lam):
+    ops = local_boson_ops(Nmax)
+    x = ops["x"]
+    p = ops["p"]
 
+    H = 0.5*p@p + 0.5*m2*x@x
+
+    if lam > 0:
+        H += lam*x@x@x@x
+
+    U = expm(-1j*dt*H)
+    return U
+
+
+def bond_unitary(Nmax, dt, k):
+    ops = local_boson_ops(Nmax)
+    x = ops["x"]
+
+    H = -k*np.kron(x,x)
+
+    U = expm(-1j*dt*H)
+    return U
+
+def apply_one_site(psi, i, U):
+
+    d = U.shape[0]
+
+    op = npc.Array.from_ndarray_trivial(
+        U.reshape(d, d),
+        labels=['p', 'p*'] 
+    )
+
+    psi.apply_local_op(i, op, unitary=True)
+
+def apply_ring_bond(psi, i, j, U, Nmax, chi_max=256, svd_cut=1e-10):
+
+    if abs(i-j) == 1:
+        apply_two_site_adjacent(psi, min(i,j), U)
+        return
+
+    if j < i:
+        i,j = j,i
+
+    # bring j next to i
+    for k in range(j-1, i, -1):
+        apply_two_site_adjacent(psi, k, SWAP_gate(Nmax))
+
+    apply_two_site_adjacent(psi, i, U)
+
+    # move back
+    for k in range(i+1, j):
+        apply_two_site_adjacent(psi, k, SWAP_gate(Nmax))
+
+def tebd_step_ring(psi, start, end, U1, U2,Nmax):
+
+    # onsite half step
+    for i in range(start,end):
+        apply_one_site(psi,i,U1)
+
+    # even bonds
+    for i in range(start,end-1,2):
+        apply_two_site_adjacent(psi,i,U2)
+
+    # odd bonds
+    for i in range(start+1,end-1,2):
+        apply_two_site_adjacent(psi,i,U2)
+
+    # ring bond
+    apply_ring_bond(psi,end-1,start,U2,Nmax)
+
+def wormhole_unitary(Nmax, dt, g, omega0):
+
+    ops = local_boson_ops(Nmax)
+    x = ops["x"]
+    p = ops["p"]
+
+    H = g*(0.5*omega0*np.kron(x,x)
+           + 0.5/omega0*np.kron(p,p))
+
+    return expm(-1j*dt*H)
+
+def tebd_step_coupled(psi, N, insert_idx, U1, U2, Uc,Nmax):
+
+    # onsite evolution (both sides)
+    for i in range(2*N):
+        apply_one_site(psi, i, U1)
+
+    # left bonds
+    for i in range(0, N-1):
+        apply_two_site_adjacent(psi, i, U2)
+
+    apply_ring_bond(psi, N-1, 0, U2,Nmax)
+
+    # right bonds
+    for i in range(N, 2*N-1):
+        apply_two_site_adjacent(psi, i, U2)
+
+    apply_ring_bond(psi, 2*N-1, N, U2,Nmax)
+
+    # wormhole coupling
+    for i in range(N):
+        if i == insert_idx:
+            continue
+
+        L = i
+        R = N + i
+
+        apply_ring_bond(psi, L, R, Uc,Nmax)
+
+def evolve_with_coupling(
+        psi,
+        N,
+        insert_idx,
+        t_couple,
+        dt,
+        Nmax,
+        g,
+        m2,
+        k,
+        lam):
+
+    omega0 = np.sqrt(m2 + 2*k)
+
+    U1 = onsite_unitary(Nmax, dt, m2, lam)
+    U2 = bond_unitary(Nmax, dt, k)
+    Uc = wormhole_unitary(Nmax, dt, g, omega0)
+
+    steps = int(t_couple/dt)
+
+    for _ in range(steps):
+
+        tebd_step_coupled(
+            psi,
+            N,
+            insert_idx,
+            U1,
+            U2,
+            Uc,
+            Nmax
+        )
+
+
+def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
+
+
+    # insert gaussian mode
+    phi = gaussian_mode(Nmax, r=s, theta=theta)
+
+    psi_insert = insert_with_env(psi_tensor, insert_idx, phi)
+
+    # convert to MPS
+    psi = tensor_to_mps(psi_insert, Nmax)
+
+    # TEBD operators
+    U1 = onsite_unitary(Nmax, dt, m2, lam)
+    U2 = bond_unitary(Nmax, dt, k)
+
+    steps = int(t_scramble/dt)
+
+    # forward evolve left
+    for _ in range(steps):
+        tebd_step_ring(psi, 0, N, U1, U2,Nmax)
+
+    # wormhole coupling
+    evolve_with_coupling(
+    psi,
+    N,
+    insert_idx,
+    t_couple,
+    dt,
+    Nmax,
+    g,
+    m2,
+    k,
+    lam)
+
+    # evolve right
+    for _ in range(steps):
+        tebd_step_ring(psi, N, 2*N, U1, U2,Nmax)
+
+    return psi
 
 
 def fidelity_vs_site(
     insert_idx,
     input_ensemble,  # list of (s, theta) you use for fitting
-    center_idx,
     N,
-    Nmax):
-    Fms = []
-    Fmf = []
+    Nmax,
+    psi_tensor):
 
-    Vins, Vouts = [], []
+
+    Vins = []
+
+    Vouts = [[] for _ in range(N)]
+
 
     for s, theta in input_ensemble:
         # Run your usual protocol (NO observer) to get global Gamma_final
-        psi_out = teleportation_protocol(s,theta,N,Nmax,insert_idx)
+        psi_out = teleportation_protocol(s,theta,N,Nmax,insert_idx,psi_tensor)
         
             
         Vins.append(covariance_from_single_mode_state(gaussian_mode(Nmax=Nmax,r=s,theta=theta),Nmax))
-        Vouts.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[center_idx-N]))
+        for i in range(N):
+            Vouts[i].append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,2*N,Nmax),[i+N]))
+        
+        #Vouts3.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[3]))
+        #Vouts4.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[4]))
+        #Vouts5.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[5]))
+
 
         # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
-    X, Y = fit_gaussian_channel(Vins, Vouts)
-
-    rot1, loss, squeeze, rot2 = decompose_X(X)
-    print(center_idx, "rot1=", rot1)
-    print("rot2=", rot2)
-    print("loss=", loss)
-    print("squeeze=", squeeze)
-    print("Y=", Y)
-
-    S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
-    S_dec_flip = decoder_from_X_flip(X)  # your preferred
-
-    Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
-    Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
-
-    Fms.append(Fs)
-    Fmf.append(Ff)
-    print("fid_flip=",Ff)
-    print("fid_symp=",Fs)
 
 
-    return np.array(Fms), np.array(Fmf)
+    #X3, Y3 = fit_gaussian_channel(Vins, Vouts3)
+    #X4, Y4 = fit_gaussian_channel(Vins, Vouts4)
+    #X5, Y5 = fit_gaussian_channel(Vins, Vouts4)
+
+    fid_symp = []
+    fid_flip = []
+
+
+    for i in range(N):
+        X, Y = fit_gaussian_channel(Vins, Vouts[i])
+        rot1,loss,squeeze,rot2 = decompose_X(X)
+        print(i+N)
+        print(f"rot1={rot1}")
+        print(f"rot2={rot2}")
+        print(f"loss={loss}")
+        print(f"squeeze={squeeze}")
+        print(f"Y={Y}")
+
+        S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
+        S_dec_flip = decoder_from_X_flip(X)  # your preferred
+
+        Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
+        Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
+
+        fid_symp.append(Fs)
+        fid_flip.append(Ff)
+
+        print(f"fid_flip_3={Ff}")
+        print(f"fid_symp_3={Fs}")
+
+    """
+    rot1_3, loss_3, squeeze_3, rot2_3 = decompose_X(X3)
+    print(3)
+    print(f"rot1={rot1_3}")
+    print(f"rot2={rot2_3}")
+    print(f"loss={loss_3}")
+    print(f"squeeze={squeeze_3}")
+    print(f"Y={Y3}")
+
+    rot1_4, loss_4, squeeze_4, rot2_4 = decompose_X(X4)
+    print(4)
+    print(f"rot1={rot1_4}")
+    print(f"rot2={rot2_4}")
+    print(f"loss={loss_4}")
+    print(f"squeeze={squeeze_4}")
+    print(f"Y={Y4}")
+
+    rot1_5, loss_5, squeeze_5, rot2_5 = decompose_X(X5)
+    print(5)
+    print(f"rot1={rot1_5}")
+    print(f"rot2={rot2_5}")
+    print(f"loss={loss_5}")
+    print(f"squeeze={squeeze_5}")
+    print(f"Y={Y5}")
+
+
+  
+    S_dec_symp_3 = decoder_from_X_symplectic(X3)  # your preferred
+    S_dec_flip_3 = decoder_from_X_flip(X3)  # your preferred
+
+    Fs3 = entanglement_fidelity_gaussian(X3, Y3, S_dec_symp_3, subtract_Y=False, r=1.0)
+    Ff3 = entanglement_fidelity_gaussian(X3, Y3, S_dec_flip_3, subtract_Y=False, r=1.0)
+
+    print(f"fid_flip_3={Ff3}")
+    print(f"fid_symp_3={Fs3}")
+
+    S_dec_symp_4 = decoder_from_X_symplectic(X4)  # your preferred
+    S_dec_flip_4 = decoder_from_X_flip(X4)  # your preferred
+
+    Fs4 = entanglement_fidelity_gaussian(X4, Y4, S_dec_symp_4, subtract_Y=False, r=1.0)
+    Ff4 = entanglement_fidelity_gaussian(X4, Y4, S_dec_flip_4, subtract_Y=False, r=1.0)
+
+    print(f"fid_flip_3={Ff4}")
+    print(f"fid_symp_3={Fs4}")
+
+
+    S_dec_symp_5 = decoder_from_X_symplectic(X5)  # your preferred
+    S_dec_flip_5 = decoder_from_X_flip(X5)  # your preferred
+
+    Fs5 = entanglement_fidelity_gaussian(X5, Y5, S_dec_symp_5, subtract_Y=False, r=1.0)
+    Ff5 = entanglement_fidelity_gaussian(X5, Y5, S_dec_flip_5, subtract_Y=False, r=1.0)
+
+    print(f"fid_flip_3={Ff5}")
+    print(f"fid_symp_3={Fs5}")
+
+    """
+
+    return fid_symp,fid_flip
 
 
 N=3
+Nmax=7
+beta = 1.0
+
+m2 = 13
+k = 5
+lam = 0.0
+
+g = 1
+
+dt = 0.05
+t_scramble = 4
+t_couple = 3
+
+# build dense ring Hamiltonian
+H_quad = build_ring_H(N, Nmax, m2, k, lam)
+
+# build TFD
+psi_tensor = build_tfd_tensor(H_quad, N, Nmax, beta)
+
+# backward modular evolution
+U_back = expm(1j*t_scramble*H_quad)
+
+psi_left = psi_tensor.reshape((Nmax+1)**N,-1)
+psi_left = U_back @ psi_left
+psi_tensor = psi_left.reshape([Nmax+1]*(2*N))
+
+
 
 Ss = np.linspace(-1.5, 1.5, 4)
 Thetas = np.linspace(0, 2 * np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
 sites = np.arange(N, 2 * N)
-site_fidelities_symp = []
-site_fidelities_flip = []
-for f in range(len(sites)):
+#site_fidelities_symp = []
+#site_fidelities_flip = []
+
+
+
+
+# for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
-    Fs,Ff= fidelity_vs_site(
+Fs,Ff= fidelity_vs_site(
     insert_idx=1,
     input_ensemble=input_ensemble,  # list of (s, theta) you use for fitting
-    center_idx=sites[f],
     N=N,
-    Nmax=8
+    Nmax=7,
+    psi_tensor=psi_tensor
     )
-    site_fidelities_symp.append(Fs)
-    site_fidelities_flip.append(Ff)
 
+print("Processing complete. Check LOG.log for details.")
 
-plt.plot(sites,site_fidelities_symp,label="symplectic")
-plt.plot(sites,site_fidelities_flip,label="allow flip")
+plt.plot(sites,Fs,label="symplectic")
+plt.plot(sites,Ff,label="allow flip")
 plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.legend()
@@ -1454,4 +1727,4 @@ plt.legend()
 plt.savefig("plots/time_vs_fidelity.pdf")
 """
 
-print("done")
+log_print("done")

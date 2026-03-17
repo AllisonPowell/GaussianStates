@@ -2723,7 +2723,7 @@ def cp_check(X, Y, tol=1e-9):
     return eigs.min(), eigs
 
 
-def fidelity_vs_block_size(
+def fidelity_vs_block_size_old(
     block_sizes,
     obs_idx,
     teleported_idx,
@@ -3019,6 +3019,63 @@ def fidelity_vs_block_size(
     return np.array(Fms),np.array(Fmf)#,np.array(F_passive_symp_test),F_passive_flip_test,s1_Y_on,s2_Y_on#,dXp,dYp #np.array(Fm0),np.array(Fm1),np.array(Fm2),np.array(y_eff_list),np.array(y_eff_list_0),np.array(y_eff_list_1),np.array(y_eff_list_2)
 
 
+
+def fidelity_vs_site(
+    insert_idx,
+    input_ensemble,   # list of (s, theta) you use for fitting
+    H_coupling,
+    N,
+    wormhole):
+
+
+    Vins = []
+
+    Vouts = [[] for i in range(N)]
+
+
+    for s, theta in input_ensemble:
+        # Run your usual protocol (NO observer) to get global Gamma_final
+        Gamma_final_obs_1, Gamma_final, Gamma_forward_obs_1,Gamma_forward = teleportation_protocol(
+                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling = True
+            )        
+            
+        Vins.append(make_input_covariance(s,theta))
+        for i in range(N):
+            Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i+N]))
+        
+
+        # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
+
+    fid_symp = []
+    fid_flip = []
+
+
+    for i in range(N):
+        X, Y = fit_gaussian_channel(Vins, Vouts[i])
+        rot1,loss,squeeze,rot2 = decompose_X(X)
+        print(i+N)
+        print(f"rot1={rot1}")
+        print(f"rot2={rot2}")
+        print(f"loss={loss}")
+        print(f"squeeze={squeeze}")
+        print(f"Y={Y}")
+
+        S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
+        S_dec_flip = decoder_from_X_flip(X)  # your preferred
+
+        Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
+        Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
+
+        fid_symp.append(Fs)
+        fid_flip.append(Ff)
+
+        print(f"fid_flip_3={Ff}")
+        print(f"fid_symp_3={Fs}")
+
+    return fid_symp,fid_flip
+
+
+
 site_fidelities_symp=[]
 site_fidelities_flip=[]
 block_sizes = [1]
@@ -3036,12 +3093,12 @@ input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, determini
 
 sites=np.arange(N,2*N)
 
-for f in range(len(sites)):
+#for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
-    Fs,Ff= fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)   
-    site_fidelities_symp.append(Fs)
-    site_fidelities_flip.append(Ff)
+Fs,Ff= fidelity_vs_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False)   
+    #site_fidelities_symp.append(Fs)
+    #site_fidelities_flip.append(Ff)
 
 """
 plt.xlabel("decoder block size")
@@ -3050,8 +3107,8 @@ plt.legend()
 plt.show()
 """    
 
-plt.plot(sites,site_fidelities_symp,label="symplectic")
-plt.plot(sites,site_fidelities_flip,label="allow flip")
+plt.plot(sites,Fs,label="symplectic")
+plt.plot(sites,Ff,label="allow flip")
 plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.legend()
