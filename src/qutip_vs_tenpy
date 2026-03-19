@@ -56,6 +56,47 @@ def make_input_covariance(s, theta):
                               [0, np.exp( 2*s)]])
     return sym(Rot @ Squeeze @ Rot.T)
 
+def insert_unentangled_mode(Gamma, mode_index, Gamma_insert):
+    """
+    Replace a single mode (x_i, p_i) in the covariance matrix with a new unentangled mode.
+
+    Parameters:
+        Gamma : (2n x 2n) np.array
+            Original covariance matrix (x_0, ..., x_{n-1}, p_0, ..., p_{n-1})
+        mode_index : int
+            The index of the mode (0 <= i < n) to replace
+        Gamma_insert : (2x2) np.array (optional)
+            Covariance matrix for the inserted mode. If None, defaults to vacuum state.
+
+    Returns:
+        Gamma_new : (2n x 2n) np.array
+            New covariance matrix with the mode replaced
+    """
+    n = Gamma.shape[0] // 2
+    assert Gamma.shape == (2*n, 2*n), "Gamma must be 2n x 2n"
+    assert 0 <= mode_index < n, "Invalid mode index"
+
+    # Default inserted mode: vacuum (ν = 0.5, identity block)
+    if Gamma_insert is None:
+        Gamma_insert = 0.5 * np.eye(2)
+
+    # Identify row/column indices for mode i
+    x_i = mode_index
+    p_i = mode_index + n
+    idx_remove = [x_i, p_i]
+
+    # Create new Gamma by replacing x_i and p_i rows/cols
+    Gamma_new = Gamma.copy()
+
+    # Zero out off-diagonal coupling to/from x_i and p_i
+    Gamma_new[idx_remove, :] = 0
+    Gamma_new[:, idx_remove] = 0
+
+    # Insert new 2x2 unentangled block
+    Gamma_new[np.ix_(idx_remove, idx_remove)] = Gamma_insert
+
+    return Gamma_new
+
 
 def build_ring_potential(N, k, m2):
     """V in H = 1/2 p^T p + 1/2 x^T V x for a periodic ring."""
@@ -171,6 +212,16 @@ def two_mode_squeezed_state(r):
 
     cov = reorder_to_block_form(cov)
     return cov
+
+
+def quadratic_G_matrix(N, k, m2):
+    V = build_ring_potential(N, k, m2)
+    I = np.eye(N)
+    G = np.block([
+        [V, np.zeros((N, N))],
+        [np.zeros((N, N)), I]
+    ])
+    return G
 
 ######
 #TeNpy
@@ -324,7 +375,7 @@ def embed_one_site(op,site,L,d):
 
     return kron_all(ops)
 
-def embed_two_site(op, i, j, L, d):
+def embed_two_site_old(op, i, j, L, d):
     """
     Embed a 2-site operator acting on sites i,j into an L-site Hilbert space.
 
@@ -359,6 +410,53 @@ def embed_two_site(op, i, j, L, d):
                     O[tuple(idx_out + idx_in)] = op[c,e,a,b]
 
     return O.reshape(d**L, d**L)
+
+def embed_two_site(op, i, j, L, d):
+    """
+    Embed a 2-site operator op acting on sites i,j into an L-site Hilbert space.
+    op should be shape (d*d, d*d), with basis ordering |a,b>.
+    """
+    if i == j:
+        raise ValueError("i and j must be distinct.")
+
+    # If swapped, also swap tensor-leg ordering of the operator
+    if i > j:
+        op4 = op.reshape(d, d, d, d)          # (out_i, out_j, in_i, in_j)
+        op4 = np.transpose(op4, (1, 0, 3, 2)) # swap sites
+        op = op4.reshape(d*d, d*d)
+        i, j = j, i
+
+    op4 = op.reshape(d, d, d, d)  # (out_i, out_j, in_i, in_j)
+
+    I = np.eye(d, dtype=complex)
+    O = np.zeros((d**L, d**L), dtype=complex)
+
+    for out_i in range(d):
+        for out_j in range(d):
+            for in_i in range(d):
+                for in_j in range(d):
+                    coeff = op4[out_i, out_j, in_i, in_j]
+                    if abs(coeff) < 1e-15:
+                        continue
+
+                    factors = [I.copy() for _ in range(L)]
+
+                    Ei = np.zeros((d, d), dtype=complex)
+                    Ej = np.zeros((d, d), dtype=complex)
+
+                    Ei[out_i, in_i] = 1.0   # |out_i><in_i|
+                    Ej[out_j, in_j] = 1.0   # |out_j><in_j|
+
+                    factors[i] = Ei
+                    factors[j] = Ej
+
+                    O += coeff * kron_all(factors)
+
+    return O
+
+
+
+
 
 def build_ring_H(Nsites,Nmax,m2,k,lam):
 
@@ -397,7 +495,36 @@ def build_ring_H(Nsites,Nmax,m2,k,lam):
 
     return 0.5*(H+H.conj().T)
 
+def build_ring_H_old(Nsites, Nmax, m2, k, lam):
 
+    ops = local_boson_ops(Nmax)
+
+    x = ops["x"]
+    p = ops["p"]
+
+    d = Nmax+1
+    L = Nsites
+
+    H = np.zeros((d**L, d**L), dtype=complex)
+
+    # onsite quadratic terms
+    for i in range(L):
+
+        H += 0.5 * embed_one_site(p@p, i, L, d)
+
+        H += 0.5 * (m2 + 2*k) * embed_one_site(x@x, i, L, d)
+
+        if lam > 0:
+            H += lam * embed_one_site(x@x@x@x, i, L, d)
+
+    # coupling terms
+    xx = np.kron(x, x)
+
+    for i in range(L):
+        j = (i+1) % L
+        H += -k * embed_two_site(xx, i, j, L, d)
+
+    return 0.5*(H + H.conj().T)
 
 def tensor_to_mps(psi_tensor,Nmax):
 
@@ -433,6 +560,77 @@ def build_tfd_tensor(H_side,Nsites,Nmax,beta):
     psi = C.reshape([d]*Nsites + [d]*Nsites)
 
     return psi
+
+def commutator(A, B):
+    return A @ B - B @ A
+
+def check_quadratic_heisenberg(H_side, Nsites, Nmax, m2, k):
+    ops = local_boson_ops(Nmax)
+    x = ops["x"]
+    p = ops["p"]
+    d = Nmax + 1
+
+    V = build_ring_potential(Nsites, k, m2)
+
+    errs_x = []
+    errs_p = []
+
+    for i in range(Nsites):
+        Xi = embed_one_site(x, i, Nsites, d)
+        Pi = embed_one_site(p, i, Nsites, d)
+
+        lhs_x = 1j * commutator(H_side, Xi)
+        rhs_x = Pi
+
+        err_x = np.linalg.norm(lhs_x - rhs_x) / max(np.linalg.norm(rhs_x), 1e-14)
+        errs_x.append(err_x)
+
+        lhs_p = 1j * commutator(H_side, Pi)
+
+        rhs_p = np.zeros_like(H_side, dtype=complex)
+        for j in range(Nsites):
+            Xj = embed_one_site(x, j, Nsites, d)
+            rhs_p += -V[i, j] * Xj
+
+        err_p = np.linalg.norm(lhs_p - rhs_p) / max(np.linalg.norm(rhs_p), 1e-14)
+        errs_p.append(err_p)
+
+    return np.array(errs_x), np.array(errs_p)
+
+def thermal_density_matrix_from_H(H, beta):
+    evals, evecs = eigh(H)
+    evals = evals - evals.min()
+    w = np.exp(-beta * evals)
+    Z = np.sum(w)
+    rho = evecs @ np.diag(w / Z) @ evecs.conj().T
+    return rho
+
+def one_side_covariance_from_rho(rho, Nsites, Nmax):
+    ops = local_boson_ops(Nmax)
+    x = ops["x"]
+    p = ops["p"]
+    d = Nmax + 1
+
+    R_ops = []
+    for i in range(Nsites):
+        R_ops.append(embed_one_site(x, i, Nsites, d))
+    for i in range(Nsites):
+        R_ops.append(embed_one_site(p, i, Nsites, d))
+
+    n = 2 * Nsites
+    means = np.zeros(n)
+    Gamma = np.zeros((n, n))
+
+    for a in range(n):
+        means[a] = np.real(np.trace(rho @ R_ops[a]))
+
+    for a in range(n):
+        for b in range(n):
+            sym_op = 0.5 * (R_ops[a] @ R_ops[b] + R_ops[b] @ R_ops[a])
+            val = np.real(np.trace(rho @ sym_op))
+            Gamma[a, b] = val - means[a] * means[b]
+
+    return 0.5 * (Gamma + Gamma.T)
 
 #########
 # Qutip
@@ -526,11 +724,13 @@ true_cov = two_mode_squeezed_state(r=1)
 
 
 N=3
-Nmax=8
+Nmax=9
 m2 = 13
 k=5
 lam=0
 beta=1
+t_scramble = 1
+insert_idx = 1
 
 H_quad = build_ring_H(N,Nmax,m2,k,lam)
 
@@ -538,10 +738,127 @@ psi_tfd = build_tfd_tensor(H_quad,N,Nmax,beta)
 
 psi_tfd_mps = tensor_to_mps(psi_tfd,Nmax)
 
+psi_tfd_cov = covariance_matrix_from_mps(psi_tfd_mps, 2*N, Nmax)
+
 V = build_ring_potential(N, k, m2)
 
 Gamma_TFD = tfd_cov_ring_from_normal_modes(N, k, m2, V,beta=1,eps_omega=1e-15)
 
+U_back = expm(1j*t_scramble*H_quad)
+
+psi_tfd = psi_tfd.reshape((Nmax+1)**N,-1)
+
+psi_back = U_back @ psi_tfd
+
+psi_back = psi_back.reshape([Nmax+1]*(2*N))
+
+psi_back_mps = tensor_to_mps(psi_back,Nmax)
+
+psi_back_cov = covariance_matrix_from_mps(psi_back_mps, 2*N, Nmax)
+
+
+phi = gaussian_mode(
+        Nmax=Nmax,
+        r=s,       # squeezing strength
+        theta=theta    # phase rotation
+    )
+
+psi_insert = insert_with_env(psi_tensor,insert_idx,phi)
+
+    # convert to MPS
+
+psi = tensor_to_mps(psi_insert,Nmax)
+
+    # forward evolve left
+
+U1 = onsite_unitary(Nmax,dt,m2,lam)
+U2 = bond_unitary(Nmax,dt,k)
+
+steps = int(t_scramble/dt)
+
+for _ in range(steps):
+
+    for i in range(N):
+        apply_one_site(psi,i,U1)
+
+    for i in range(N):
+        apply_two_site_adjacent(psi,i,U2)   # ring bond
+
+psi_forward = psi
+
+psi_forward_cov = covariance_matrix_from_mps(psi_forward, 2*N, Nmax)
+
+
+HL = np.zeros((2*N,2*N))
+for i in range(2*N):
+    if i < N-1:
+        HL[i, i] = m2 + 2 * k  # on-site + two neighbors
+        HL[i,i+1] = -k
+        HL[i+1, i] = -k    
+    if i == N-1:
+        HL[i,0] = -k
+        HL[0,i] = -k 
+        HL[i,i] = m2 + 2 * k 
+    if i > N-1:
+        HL[i,i] = 1
+
+HL_full = np.zeros((4*N, 4*N))
+HL_full[np.ix_(range(N), range(N))] = HL[:N, :N]                     # x-x
+HL_full[np.ix_(range(N), range(2*N, 3*N))] = HL[:N, N:]             # x-p
+HL_full[np.ix_(range(2*N, 3*N), range(N))] = HL[N:, :N]             # p-x
+HL_full[np.ix_(range(2*N, 3*N), range(2*N, 3*N))] = HL[N:, N:]      # p-p
+
+
+
+
+
+Omega = symplectic_form(2*N)
+
+S_back = expm(-1 * Omega @ HL_full * t_scramble)
+Gamma_back = S_back @ Gamma_TFD @ S_back.T
+
+
+Rot = np.array([[np.cos(theta), -np.sin(theta)],
+                [np.sin(theta), np.cos(theta)]])
+Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
+                          [0, np.exp(2*s)]])
+
+Gamma_rot_squeezed = Rot @ Squeeze @ Rot.T
+
+Gamma_insert = insert_unentangled_mode(Gamma_back, insert_idx, Gamma_insert=Gamma_rot_squeezed)
+
+S_forward_no_insert = expm(Omega @ HL_full * t0)
+
+Gamma_forward = S_forward_no_insert @ Gamma_insert @ S_forward_no_insert.T
+
+
+
+"""
+errs_x, errs_p = check_quadratic_heisenberg(H_quad, N, Nmax, m2, k)
+
+rho_th_trunc = thermal_density_matrix_from_H(H_quad, beta)
+Gamma_th_trunc = one_side_covariance_from_rho(rho_th_trunc, N, Nmax)
+
+V = build_ring_potential(N, k, m2)
+omega2, O = np.linalg.eigh(V)
+omega = np.sqrt(omega2)
+Gamma_th_exact, _ = thermal_cov_one_side_from_modes(O, omega, beta)
+
+print("||Gamma_th_trunc - Gamma_th_exact|| =", np.linalg.norm(Gamma_th_trunc - Gamma_th_exact))
+print("diag trunc x:", np.diag(Gamma_th_trunc)[:N])
+print("diag trunc p:", np.diag(Gamma_th_trunc)[N:])
+print("diag exact x:", np.diag(Gamma_th_exact)[:N])
+print("diag exact p:", np.diag(Gamma_th_exact)[N:])
+
+
+ops = local_boson_ops(Nmax)
+b = ops["b"]
+bd = ops["bd"]
+
+comm = b @ bd - bd @ b
+print(np.real_if_close(comm))
+print("||[b,bd]-I|| =", np.linalg.norm(comm - np.eye(Nmax+1)))
+"""
 
 """
 N_modes = 1

@@ -946,6 +946,21 @@ def insert_with_env(psi_tensor,insert_idx,phi):
 
     return psi_out
 
+def insert_state_replace(psi_tensor, insert_idx, phi):
+
+    d = psi_tensor.shape[0]
+
+    # move target axis to front
+    psi_perm = np.moveaxis(psi_tensor, insert_idx, 0)
+
+    # contract with phi
+    psi_new = np.tensordot(phi, psi_perm, axes=(0,0))
+
+    # reinsert axis
+    psi_new = np.expand_dims(psi_new, axis=0)
+    psi_new = np.moveaxis(psi_new, 0, insert_idx)
+
+    return psi_new
 
 # ============================================================
 # Convert tensor → MPS
@@ -955,7 +970,7 @@ def tensor_to_mps(psi_tensor,Nmax):
 
     nsites = psi_tensor.ndim
 
-    sites = [BosonSite(Nmax=Nmax) for _ in range(nsites)]
+    sites = [BosonSite(Nmax=Nmax,conserve=None) for _ in range(nsites)]
 
     psi_npc = npc.Array.from_ndarray_trivial(
         psi_tensor,
@@ -973,19 +988,19 @@ def tensor_to_mps(psi_tensor,Nmax):
 # Trotter gates
 # ============================================================
 
-def onsite_unitary(Nmax,dt,m2,lam):
+def onsite_unitary_old(Nmax,dt,m2,k,lam):
 
     ops = local_boson_ops(Nmax)
 
     x = ops["x"]
     p = ops["p"]
 
-    h = 0.5*p@p + 0.5*m2*x@x + lam*x@x@x@x
+    h = 0.5*p@p + 0.5*(m2+2*k)*x@x + lam*x@x@x@x
 
     return expm(-1j*dt*h)
 
 
-def bond_unitary(Nmax,dt,k):
+def bond_unitary_old(Nmax,dt,k):
 
     ops = local_boson_ops(Nmax)
 
@@ -1019,7 +1034,7 @@ def coupling_bond_unitary(Nmax, dt, g, m_squared, k):
 # Apply gates
 # ============================================================
 
-def apply_one_site(psi,i,U):
+def apply_one_site_old(psi,i,U):
 
     op = npc.Array.from_ndarray_trivial(U,labels=['p','p*'])
 
@@ -1281,7 +1296,7 @@ def teleportation_protocol_old(s,theta,N,Nmax,insert_idx,psi_tensor):
 
     # forward evolve left
 
-    U1 = onsite_unitary(Nmax,dt,m2,lam)
+    U1 = onsite_unitary(Nmax,dt,m2,k,lam)
     U2 = bond_unitary(Nmax,dt,k)
 
     steps = int(t_scramble/dt)
@@ -1318,12 +1333,12 @@ def teleportation_protocol_old(s,theta,N,Nmax,insert_idx,psi_tensor):
 
     return psi
 
-def onsite_unitary(Nmax, dt, m2, lam):
+def onsite_unitary(Nmax, dt, m2, k, lam):
     ops = local_boson_ops(Nmax)
     x = ops["x"]
     p = ops["p"]
 
-    H = 0.5*p@p + 0.5*m2*x@x
+    H = 0.5*p@p + 0.5*(m2+2*k)*x@x
 
     if lam > 0:
         H += lam*x@x@x@x
@@ -1352,11 +1367,7 @@ def apply_one_site(psi, i, U):
 
     psi.apply_local_op(i, op, unitary=True)
 
-def apply_ring_bond(psi, i, j, U, Nmax, chi_max=256, svd_cut=1e-10):
-
-    if abs(i-j) == 1:
-        apply_two_site_adjacent(psi, min(i,j), U)
-        return
+def apply_coupling_bond(psi, i, j, U, Nmax, chi_max=256, svd_cut=1e-10):
 
     if j < i:
         i,j = j,i
@@ -1371,9 +1382,43 @@ def apply_ring_bond(psi, i, j, U, Nmax, chi_max=256, svd_cut=1e-10):
     for k in range(i+1, j):
         apply_two_site_adjacent(psi, k, SWAP_gate(Nmax))
 
-def tebd_step_ring(psi, start, end, U1, U2,Nmax):
 
-    # onsite half step
+
+def apply_ring_bond(psi, i, j, U, N, Nmax, chi_max=256, svd_cut=1e-10):
+
+    # ordinary adjacent bond on the line
+    if abs(i - j) == 1:
+        apply_two_site_adjacent(psi, min(i, j), U)
+        return
+
+    # wraparound ring bond
+    if abs(i - j) == N - 1:
+        if i < j:
+            left = i
+            right = j
+        else:
+            left = j
+            right = i
+
+        # bring right next to left
+        for k in range(right - 1, left, -1):
+            apply_two_site_adjacent(psi, k, SWAP_gate(Nmax))
+
+        apply_two_site_adjacent(psi, left, U)
+
+        # move back
+        for k in range(left + 1, right):
+            apply_two_site_adjacent(psi, k, SWAP_gate(Nmax))
+
+        return
+
+    raise ValueError(f"Sites {i},{j} are not nearest neighbors on a ring of length {N}.")
+
+
+
+def tebd_step_ring(psi, start, end, U1, U2,N,Nmax):
+
+    # onsite step
     for i in range(start,end):
         apply_one_site(psi,i,U1)
 
@@ -1386,7 +1431,7 @@ def tebd_step_ring(psi, start, end, U1, U2,Nmax):
         apply_two_site_adjacent(psi,i,U2)
 
     # ring bond
-    apply_ring_bond(psi,end-1,start,U2,Nmax)
+    apply_ring_bond(psi,end-1,start,U2,N,Nmax)
 
 def wormhole_unitary(Nmax, dt, g, omega0):
 
@@ -1409,13 +1454,13 @@ def tebd_step_coupled(psi, N, insert_idx, U1, U2, Uc,Nmax):
     for i in range(0, N-1):
         apply_two_site_adjacent(psi, i, U2)
 
-    apply_ring_bond(psi, N-1, 0, U2,Nmax)
+    apply_ring_bond(psi, N-1, 0, U2,N,Nmax)
 
     # right bonds
     for i in range(N, 2*N-1):
         apply_two_site_adjacent(psi, i, U2)
 
-    apply_ring_bond(psi, 2*N-1, N, U2,Nmax)
+    apply_ring_bond(psi, 2*N-1, N, U2,N,Nmax)
 
     # wormhole coupling
     for i in range(N):
@@ -1425,7 +1470,7 @@ def tebd_step_coupled(psi, N, insert_idx, U1, U2, Uc,Nmax):
         L = i
         R = N + i
 
-        apply_ring_bond(psi, L, R, Uc,Nmax)
+        apply_coupling_bond(psi, L, R, Uc,Nmax)
 
 def evolve_with_coupling(
         psi,
@@ -1441,7 +1486,7 @@ def evolve_with_coupling(
 
     omega0 = np.sqrt(m2 + 2*k)
 
-    U1 = onsite_unitary(Nmax, dt, m2, lam)
+    U1 = onsite_unitary(Nmax, dt, m2, k, lam)
     U2 = bond_unitary(Nmax, dt, k)
     Uc = wormhole_unitary(Nmax, dt, g, omega0)
 
@@ -1460,26 +1505,40 @@ def evolve_with_coupling(
         )
 
 
-def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
 
+
+
+def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
+    N=3
+    beta = 1.0
+
+    m2 = 13
+    k = 5
+    lam = 0.0
+
+    g = 1
+
+    dt = 0.05
+    t_scramble = 4
+    t_couple = 3
 
     # insert gaussian mode
     phi = gaussian_mode(Nmax, r=s, theta=theta)
 
     psi_insert = insert_with_env(psi_tensor, insert_idx, phi)
-
+    #insert_state_replace(psi_tensor, insert_idx, phi)
     # convert to MPS
     psi = tensor_to_mps(psi_insert, Nmax)
 
     # TEBD operators
-    U1 = onsite_unitary(Nmax, dt, m2, lam)
+    U1 = onsite_unitary(Nmax, dt, m2, k, lam)
     U2 = bond_unitary(Nmax, dt, k)
 
     steps = int(t_scramble/dt)
-
+    
     # forward evolve left
     for _ in range(steps):
-        tebd_step_ring(psi, 0, N, U1, U2,Nmax)
+        tebd_step_ring(psi, 0, N, U1, U2,N,Nmax)
 
     # wormhole coupling
     evolve_with_coupling(
@@ -1496,7 +1555,7 @@ def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
 
     # evolve right
     for _ in range(steps):
-        tebd_step_ring(psi, N, 2*N, U1, U2,Nmax)
+        tebd_step_ring(psi, N, 2*N, U1, U2,N,Nmax)
 
     return psi
 
@@ -1517,11 +1576,12 @@ def fidelity_vs_site(
     for s, theta in input_ensemble:
         # Run your usual protocol (NO observer) to get global Gamma_final
         psi_out = teleportation_protocol(s,theta,N,Nmax,insert_idx,psi_tensor)
-        
+        Vout = covariance_matrix_from_mps(psi_out,2*N+1,Nmax)   
             
         Vins.append(covariance_from_single_mode_state(gaussian_mode(Nmax=Nmax,r=s,theta=theta),Nmax))
         for i in range(N):
-            Vouts[i].append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,2*N,Nmax),[i+N]))
+            Vouts[i].append(extract_subsystem_covariance(Vout,[i+N+1]))
+            print(i,Vouts[i][-1])
         
         #Vouts3.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[3]))
         #Vouts4.append(extract_subsystem_covariance(covariance_matrix_from_mps(psi_out,N,Nmax),[4]))
@@ -1537,7 +1597,8 @@ def fidelity_vs_site(
 
     fid_symp = []
     fid_flip = []
-
+    for i in range(N):
+        print(f"Vouts[{i}]={Vouts[0]}")
 
     for i in range(N):
         X, Y = fit_gaussian_channel(Vins, Vouts[i])
@@ -1549,8 +1610,8 @@ def fidelity_vs_site(
         print(f"squeeze={squeeze}")
         print(f"Y={Y}")
 
-        S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
-        S_dec_flip = decoder_from_X_flip(X)  # your preferred
+        S_dec_symp = decoder_from_X_symplectic(X)  
+        S_dec_flip = decoder_from_X_flip(X) 
 
         Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
         Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
@@ -1622,7 +1683,7 @@ def fidelity_vs_site(
 
 
 N=3
-Nmax=7
+Nmax=9
 beta = 1.0
 
 m2 = 13
@@ -1650,7 +1711,7 @@ psi_tensor = psi_left.reshape([Nmax+1]*(2*N))
 
 
 
-Ss = np.linspace(-1.5, 1.5, 4)
+Ss = np.linspace(-1, 1, 4)
 Thetas = np.linspace(0, 2 * np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
@@ -1668,7 +1729,7 @@ Fs,Ff= fidelity_vs_site(
     insert_idx=1,
     input_ensemble=input_ensemble,  # list of (s, theta) you use for fitting
     N=N,
-    Nmax=7,
+    Nmax=Nmax,
     psi_tensor=psi_tensor
     )
 
