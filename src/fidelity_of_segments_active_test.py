@@ -539,7 +539,7 @@ def _coth(x):
     # stable-ish coth for moderate x
     return 1.0 / np.tanh(x)
 
-def tfd_cov_ring_from_normal_modes(N, k, m2, beta, eps_omega=1e-15):
+def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
     """
     Construct the *pure* TFD covariance matrix for the ring Hamiltonian
         H = 1/2 p^T p + 1/2 x^T V x
@@ -551,7 +551,7 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, beta, eps_omega=1e-15):
     This construction is an *analytic* Gaussian purification mode-by-mode, so in exact arithmetic
     symplectic eigenvalues of the 4N-mode state are exactly 0.5.
     """
-    V = build_ring_potential(N, k, m2)
+    #V = build_ring_potential(N, k, m2)
 
     # V = O diag(omega^2) O^T
     omega2, O = np.linalg.eigh(V)
@@ -835,7 +835,9 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         #Gamma_reconstructed, nu, eps_reconstructed = build_thermal_state_from_modular_hamiltonian(HL)
 
         #Gamma_TFD = gaussian_purification(Gamma_reconstructed)
-        Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, beta=1, eps_omega=1e-15)
+        V = build_ring_potential(N//2, k, m_squared)
+        
+        Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
         t0 = 2
 
@@ -2721,7 +2723,7 @@ def cp_check(X, Y, tol=1e-9):
     return eigs.min(), eigs
 
 
-def fidelity_vs_block_size(
+def fidelity_vs_block_size_old(
     block_sizes,
     obs_idx,
     teleported_idx,
@@ -3017,6 +3019,7 @@ def fidelity_vs_block_size(
     return np.array(Fms),np.array(Fmf)#,np.array(F_passive_symp_test),F_passive_flip_test,s1_Y_on,s2_Y_on#,dXp,dYp #np.array(Fm0),np.array(Fm1),np.array(Fm2),np.array(y_eff_list),np.array(y_eff_list_0),np.array(y_eff_list_1),np.array(y_eff_list_2)
 
 
+
 def fidelity_vs_site(
     insert_idx,
     input_ensemble,   # list of (s, theta) you use for fitting
@@ -3039,7 +3042,6 @@ def fidelity_vs_site(
         Vins.append(make_input_covariance(s,theta))
         for i in range(N):
             Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i+N]))
-            print(i,s,theta,Vouts[i][-1])
         
 
         # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
@@ -3072,6 +3074,8 @@ def fidelity_vs_site(
 
     return fid_symp,fid_flip
 
+
+
 site_fidelities_symp=[]
 site_fidelities_flip=[]
 block_sizes = [1]
@@ -3089,16 +3093,17 @@ input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, determini
 
 sites=np.arange(N,2*N)
 
+#for f in range(len(sites)):
 
 Fs,Ff= fidelity_vs_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False) 
 """
 for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
-    Fs,Ff= fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)   
-    site_fidelities_symp.append(Fs)
-    site_fidelities_flip.append(Ff)
-"""
+Fs,Ff= fidelity_vs_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False)   
+    #site_fidelities_symp.append(Fs)
+    #site_fidelities_flip.append(Ff)
+
 """
 plt.xlabel("decoder block size")
 plt.ylabel("fidelity")

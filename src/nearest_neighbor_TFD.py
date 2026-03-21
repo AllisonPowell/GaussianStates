@@ -1010,7 +1010,9 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 
 
 N = 6
+N = 6
 k = 5
+m_squared = 13
 m_squared = 13
 m2 = m_squared
 
@@ -1080,6 +1082,7 @@ HL = np.block([[V,np.zeros((N//2,N//2))],
 # investigate spreading
 ###########
 
+t0 = 4
 t0 = 4
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10

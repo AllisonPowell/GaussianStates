@@ -1716,6 +1716,9 @@ def fidelity_vs_block_size(
         print("F_flip=",Ff)
         print("F_symp=",Fs)
 
+        print("F_flip=",Ff)
+        print("F_symp=",Fs)
+
         #wigner_overlap=[]
         #for v in range(len(Vouts)):  
             #f = wigner_overlap_with_gaussian_target(q_outs[v], p_outs[v] Vin, d_target=None)
@@ -1796,8 +1799,8 @@ plt.plot(sites,site_fidelities_flip,label="allow flip")
 plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.legend()
-plt.show()
-
+#plt.show()
+plt.savefig("plots/site_vs_fidelity.pdf")
 
 """
 plt.xlabel("decoder block size")
@@ -1835,7 +1838,9 @@ plt.plot(times_evolve,time_fidelities_flip,label="allow flip")
 plt.xlabel("times")
 plt.ylabel("fidelity")
 plt.legend()
-plt.show()
+#plt.show()
+plt.savefig("plots/time_vs_fidelity.pdf")
 """
+
 print("done")
 

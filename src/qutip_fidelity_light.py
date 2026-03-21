@@ -1397,7 +1397,8 @@ def phi_squeezed_vacuum(d: int, r: float, theta: float):
     phi /= norm
     return phi
 
-def n_on_mode(m, N_total):
+def n_on_mode(m, N_total,N_cutoff):
+    n_loc = destroy(N_cutoff).dag() * destroy(N_cutoff)
     I = qeye(N_cutoff)
     ops = [I]*N_total
     ops[m] = n_loc
@@ -1446,11 +1447,11 @@ def fidelity_vs_block_size(
     X, Y = fit_gaussian_channel(Vins, Vouts)
 
     rot1, loss, squeeze, rot2 = decompose_X(X)
-    #print(center_idx, "rot1=", rot1)
-    #print("rot2=", rot2)
-    #print("loss=", loss)
-    #print("squeeze=", squeeze)
-    #print("Y=", Y)
+    print(center_idx, "rot1=", rot1)
+    print("rot2=", rot2)
+    print("loss=", loss)
+    print("squeeze=", squeeze)
+    print("Y=", Y)
 
     S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
     S_dec_flip = decoder_from_X_flip(X)  # your preferred
@@ -1460,6 +1461,8 @@ def fidelity_vs_block_size(
 
     Fms.append(Fs)
     Fmf.append(Ff)
+    print("fid_flip=",Ff)
+    print("fid_symp=",Fs)
 
 
     return np.array(Fms), np.array(Fmf)
@@ -1541,8 +1544,8 @@ p_full = [wrap_full(p_loc, i, N_total, I) for i in range(N_total)]
 
 H_int = 0
 for i in range(N_modes):
-    if i == insert_idx:
-        continue
+    #if i == insert_idx:
+        #continue
     Li = i
     Ri = i + N_modes
     H_int += mu_x * x_full[Li] * x_full[Ri]
@@ -1591,13 +1594,6 @@ for f in range(len(sites)):
     site_fidelities_symp.append(Fs)
     site_fidelities_flip.append(Ff)
 
-"""
-plt.xlabel("decoder block size")
-plt.ylabel("fidelity")
-plt.legend()
-plt.show()
-"""
-
 
 plt.plot(sites,site_fidelities_symp,label="symplectic")
 plt.plot(sites,site_fidelities_flip,label="allow flip")
@@ -1607,19 +1603,30 @@ plt.legend()
 plt.savefig("plots/site_vs_fidelity.pdf")
 # plt.show()
 
-
 """
-times_evolve = np.linspace(1.2, 1.5, 4)
+plt.xlabel("decoder block size")
+plt.ylabel("fidelity")
+plt.legend()
+plt.show()
+"""
+
+
+
+
+
+
+times_couple = np.linspace(1, 3, 5)
 time_fidelities_symp = []
 time_fidelities_flip = []
-for t in range(len(times_evolve)):
+"""
+for t in range(len(times_couple)):
     # Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     # plt.plot(block_sizes,Fs,label=sites[f])
     Fs,Ff= fidelity_vs_block_size(
     insert_idx,
     input_ensemble,
-    times_evolve[t],
-    t_couple,
+    t_scramble,
+    times_couple[t],
     dt,
     C_back,
     H_coupling,
@@ -1628,12 +1635,12 @@ for t in range(len(times_evolve)):
     N_cutoff,
     x_full_env=x_full_env,
     p_full_env=p_full_env,
-    center_idx=4)
+    center_idx=3)
     time_fidelities_symp.append(Fs)
     time_fidelities_flip.append(Ff)
 
-plt.plot(times_evolve, time_fidelities_symp, label="symplectic")
-plt.plot(times_evolve, time_fidelities_flip, label="allow flip")
+plt.plot(times_couple, time_fidelities_symp, label="symplectic")
+plt.plot(times_couple, time_fidelities_flip, label="allow flip")
 plt.xlabel("times")
 plt.ylabel("fidelity")
 plt.legend()
