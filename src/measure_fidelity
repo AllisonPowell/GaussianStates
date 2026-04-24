@@ -30,19 +30,6 @@ def von_neumann_entropy_alt(Gamma):
     nu = np.clip(nu, 0.500001, None)
     return sum((nu + 0.5)*np.log(nu + 0.5) - (nu - 0.5)*np.log(nu - 0.5))
 
-def trace_out_subsystem(Gamma, keep_indices):
-    """
-    Return the reduced covariance matrix for a Gaussian state
-    by keeping only modes in keep_indices (x and p interleaved).
-
-    keep_indices: list or array of mode indices to keep (0 to n-1)
-    Assumes Gamma is in the (x_0,...x_n, p_0,...p_n) basis
-    """
-    n = Gamma.shape[0] // 2
-    x_idx = np.array(keep_indices)
-    p_idx = x_idx + n
-    full_idx = np.concatenate([x_idx, p_idx])
-    return Gamma[np.ix_(full_idx, full_idx)]
 
 
 
@@ -276,15 +263,6 @@ def pad_matrix_for_observer(H_sys, observer_modes=1):
 
     return H_padded
     
-def extract_mode_block(Gamma, mode_index):
-    """
-    Extract the 2×2 covariance matrix (x, p) block for one mode from full Gamma.
-    Assumes Gamma is in (x0, ..., xn, p0, ..., pn) ordering.
-    """
-    n = Gamma.shape[0] // 2
-    x_i = mode_index
-    p_i = mode_index + n
-    return Gamma[np.ix_([x_i, p_i], [x_i, p_i])]
 
 def compute_MI_with_observer(Gamma, observer_idx, target_indices):
     # Gamma: 2n x 2n covariance matrix
@@ -603,47 +581,39 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
 
 #define coupling Hamiltonian
 
-# Global oscillator indices of left and right boundaries
-#bdy_len = 2**(L - 1)         # e.g. 128
-#bdy_1 = np.arange(N - bdy_len, N)               # left boundary: physical indices
-#bdy_2 = np.arange(N_tot - bdy_len, N_tot)       # right boundary: physical indices
+def H_coupling(N):
+    bdy_len = N
+    bdy_1_idx = np.arange(bdy_len)
+    bdy_2_idx = np.arange(bdy_len,2*bdy_len)
 
-# Map these physical indices into the post-measurement (Gamma_TFD) indexing
-# You need to find where each bdy_1 and bdy_2 element lies in un_set
-#lookup = {node: i for i, node in enumerate(un_set)}
-#bdy_1_idx = np.array([lookup[x] for x in bdy_1])
-#bdy_2_idx = np.array([lookup[x] for x in bdy_2])
+    #carrier_indices = np.arange(0, bdy_len)  # skip teleportation qubit
 
-N = 64
-bdy_len = N
-bdy_1_idx = np.arange(bdy_len)
-bdy_2_idx = np.arange(bdy_len,2*bdy_len)
+    insert_idx = 1
+    carrier_indices1 = np.arange(0,insert_idx)
+    carrier_indices2 = np.arange(insert_idx+1,bdy_len)
+    carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
 
-#carrier_indices = np.arange(0, bdy_len)  # skip teleportation qubit
+    def idx_x(j): return j
+    def idx_p(j): return j + n_total
 
-insert_idx = 1
-carrier_indices1 = np.arange(0,insert_idx)
-carrier_indices2 = np.arange(insert_idx+1,bdy_len)
-carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
+    n_total = 2*bdy_len
+    H_coupling_OG = np.zeros((2*n_total, 2*n_total))
+    mu = 1
+    k = 6
+    m_squared=13
+    omega0 = np.sqrt(m_squared + 2*k)
+    #omega0=1
 
-def idx_x(j): return j
-def idx_p(j): return j + n_total
-
-n_total = 2*bdy_len
-H_coupling_OG = np.zeros((2*n_total, 2*n_total))
-mu = 1
-k = 5
-m_squared = 13
-omega0 = np.sqrt(m_squared + 2*k)
-#omega0=1
-
-for j in carrier_indices:
+    for j in carrier_indices:
     x_L = bdy_1_idx[j]
     x_R = bdy_2_idx[j]
     # x coupling
     H_coupling_OG[x_L, x_R] = H_coupling_OG[x_R, x_L] = mu*omega0 / 2
     # p coupling
     H_coupling_OG[x_L + n_total, x_R + n_total] = H_coupling_OG[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+    return H_coupling_OG
+
+
 """
 L = 4
 Lh = 3
@@ -780,7 +750,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
     q = insert_idx
     if wormhole == False:
         N = 2*n_one_side
-        k = 5
+        k = 6
         m_squared = 13
         HL = np.zeros((N,N))
         
@@ -839,8 +809,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        #t0 = 4
-        t0 = 59
+        t0 = 2
 
 
     else:
@@ -943,7 +912,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0 = 4
+        t0 = 2
 
 
     ############
@@ -1017,7 +986,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
     # couple the two sides
     #######
     if coupling==True:
-        t_couple = 3       
+        t_couple = 3
         S_coupling = expm(Omega @ H_coupling * t_couple)
         Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 
@@ -2588,7 +2557,7 @@ def teleport_test(s,theta,n_one_side,center_idx,m):
 
     Gamma_TFD = gaussian_purification(Gamma_reconstructed)
 
-    t0 = 4
+    t0 = 2
 
     n = Gamma_TFD.shape[0] // 2
     bdy_len = Gamma_TFD.shape[0] // 4
@@ -3082,9 +3051,9 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 64
+N = 3
 obs_idx = 2*N
-insert_idx = 32
+insert_idx = 1
 teleported_idx = insert_idx+N
 bdy_len = N
 
@@ -3251,7 +3220,7 @@ mut_info_vs_segments(s=0,theta=0,n_one_side=64,center_idx_telep=32,m=8,insert_id
 #block_sizes = [1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]
 block_sizes = [1]
 obs_idx = 128
-insert_idx = 32
+insert_idx = 1
 teleported_idx = 1 + 3
 bdy_len = 1
 """

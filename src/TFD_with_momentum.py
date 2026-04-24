@@ -1001,6 +1001,19 @@ HL_full[np.ix_(range(n, n + b), range(b))] = HL[b:, :b]             # p-x
 HL_full[np.ix_(range(n, n + b), range(n, n + b))] = HL[b:, b:]      # p-p
 
 
+HR_full = np.zeros((2*n, 2*n))
+HR_full[np.ix_(range(b, 2*b), range(b, 2*b))] = HL[:b, :b]
+HR_full[np.ix_(range(b, 2*b), range(n + b, n + 2*b))] = HL[:b, b:]
+HR_full[np.ix_(range(n + b, n + 2*b), range(b, 2*b))] = HL[b:, :b]
+HR_full[np.ix_(range(n + b, n + 2*b), range(n + b, n + 2*b))] = HL[b:, b:]
+
+
+H_LR = HL_full+HR_full
+
+HR_full_padded = pad_matrix_for_observer(HR_full)
+HL_full_padded = pad_matrix_for_observer(HL_full)
+
+H_LR_padded = HL_full_padded+HR_full_padded
 
 
 # Symplectic form
@@ -1079,7 +1092,6 @@ Omega_padded = symplectic_form(n_total)
 
 #Omega = symplectic_form(Gamma_TFD.shape[0]//2)
 
-HL_full_padded = pad_matrix_for_observer(HL_full)
 
 S_forward = expm(Omega_padded @ HL_full_padded * t0)
 Gamma_forward = S_forward @ Gamma_with_observer @ S_forward.T
@@ -1187,6 +1199,7 @@ for j in carrier_indices:
 
 
 H_padded = pad_matrix_for_observer(H)
+#H_padded+=H_LR_padded  
 
 
 
@@ -1227,14 +1240,6 @@ for t in times_obs_coupling:
 ######
 
 
-HR_full = np.zeros((2*n, 2*n))
-HR_full[np.ix_(range(b, 2*b), range(b, 2*b))] = HL[:b, :b]
-HR_full[np.ix_(range(b, 2*b), range(n + b, n + 2*b))] = HL[:b, b:]
-HR_full[np.ix_(range(n + b, n + 2*b), range(b, 2*b))] = HL[b:, :b]
-HR_full[np.ix_(range(n + b, n + 2*b), range(n + b, n + 2*b))] = HL[b:, b:]
-
-
-HR_full_padded = pad_matrix_for_observer(HR_full)
 
 
 S_final = expm(Omega_padded @ HR_full_padded * t0)
@@ -1326,7 +1331,7 @@ for i in range(1,lengths_array.shape[0]):
     mut_info_telep_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, segment_telep))
 """
 
-center_idx = 33
+center_idx = 32
 
 for i in range(1,lengths_array.shape[0]):
     #if i == 0:

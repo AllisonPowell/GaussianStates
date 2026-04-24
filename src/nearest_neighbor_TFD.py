@@ -1009,14 +1009,14 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 ########
 
 
-N = 6
-N = 6
+
+N = 32
 k = 5
-m_squared = 13
+
 m_squared = 13
 m2 = m_squared
 
-"""
+ 
 HL = np.zeros((N,N))
 
 for i in range(N):
@@ -1035,7 +1035,7 @@ for i in range(N):
         HL[i,i] = m_squared + 2 * k 
     if i > N//2-1:
         HL[i,i] = 1
-"""
+
 """
 plt.imshow(np.abs(HL),vmax = ".5")
 plt.colorbar()
@@ -1072,8 +1072,8 @@ Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V,beta=1,eps_omeg
 
 S_tot = von_neumann_entropy_alt(Gamma_TFD)
 
-HL = np.block([[V,np.zeros((N//2,N//2))],
-            [np.zeros((N//2,N//2)),np.eye(N//2)]])
+#HL = np.block([[V,np.zeros((N//2,N//2))],
+#            [np.zeros((N//2,N//2)),np.eye(N//2)]])
 
 
 
@@ -1082,8 +1082,7 @@ HL = np.block([[V,np.zeros((N//2,N//2))],
 # investigate spreading
 ###########
 
-t0 = 4
-t0 = 4
+t0 = 6
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
@@ -1238,8 +1237,8 @@ for s,t in enumerate(times_obs_forward):
     #I_telep_4.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+4]))
     #I_telep_7.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+7]))
     #I_telep_11.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+11]))
-    scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
-    scores_array[int(s),:] = scores/np.linalg.norm(scores)
+    #scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
+    #scores_array[int(s),:] = scores/np.linalg.norm(scores)
 
 initial_mut_info= []
 for i in range(Gamma_TFD.shape[0]//2):
@@ -1361,8 +1360,8 @@ for s,t in enumerate(times_obs_coupling):
     #I_telep_4.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+4]))
     #I_telep_7.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+7]))
     #I_telep_11.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+11]))
-    scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
-    scores_array[int(T+s),:] = scores/np.linalg.norm(scores)
+    #scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
+    #scores_array[int(T+s),:] = scores/np.linalg.norm(scores)
 
 ######
 # evolve state forwards in time with KR
@@ -1399,20 +1398,21 @@ for s,t in enumerate(times_obs_forward):
     #I_telep_4.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+4]))
     #I_telep_7.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+7]))
     #I_telep_11.append(compute_MI_with_observer(Gamma_LR, observer_idx, [teleport_idx+11]))
-    scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
-    scores_array[int(2*T+s),:] = scores/np.linalg.norm(scores) 
+    #scores = signal_map_from_covariance(Gamma_LR, observer_idx, n_total=N+1, exclude_obs=True)
+    #scores_array[int(2*T+s),:] = scores/np.linalg.norm(scores) 
 
 
 #times_score = [0,T/2,T-1,3/2*T,2*T-1,5/2*T,3*T-1]
 times_score = [0,T-1,2*T-1,3*T-1]
 
+"""
 for t in range(len(times_score)):
     plt.plot(np.arange(N),scores_array[int(times_score[t]),:],label=f"t={times_score[t]*dt_couple if t==2 else times_score[t]*dt:.2f}")
 plt.xlabel("site")
 plt.ylabel("correlation with observer")
 plt.legend()
 plt.show()
-
+"""
 
 
 times_bdy_info = np.concatenate((times_back,times_obs_forward+times_back[-1],times_obs_coupling+times_back[-1],times_obs_final+times_back[-1]))
@@ -1453,7 +1453,7 @@ times = np.concatenate((times_obs_forward,times_obs_coupling,times_obs_final))
 plt.plot(times,I_obs_L,"k",label = "mutual info with left")
 plt.plot(times,I_obs_R,"r",label = "mutual info with right")
 plt.plot(times,I_tot,"blue",label = "total mutual info")
-#plt.plot(times,I_insert,"green",label = "mutual info with insert")
+plt.plot(times,I_insert,"green",label = "mutual info with insert")
 #plt.plot(times,I_telep,"orange",label = "mutual info with teleported")
 #plt.plot(times,I_telep_1,"magenta",label = "mutual info with teleported+1")
 #plt.plot(times,I_telep_4,"cyan",label = "mutual info with teleported+4")
