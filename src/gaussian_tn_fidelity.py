@@ -3563,7 +3563,7 @@ def fidelity_vs_site(
 
 
 N=3
-Nmax=7
+Nmax=8
 beta = 1.0
 
 m2 = 13
