@@ -44,7 +44,7 @@ from qutip import (
 )
 
 def symplectic_form(n):
-    """Returns the 2n × 2n symplectic form Omega"""
+    #Returns the 2n × 2n symplectic form Omega
     return np.block(
         [
             [np.zeros((n, n), dtype=np.float64), np.eye(n, dtype=np.float64)],
