@@ -523,7 +523,7 @@ def teleport(probe_site,n_tube,r):
     return mi_final, mi_left, mi_right
 
 tube_lengths = np.arange(0,11)
-nl = 4
+nl = 6
 final = [[] for _ in range(nl)]
 d_left_right = [[] for _ in range(nl)]
 rvals = np.linspace(.1,1,5)

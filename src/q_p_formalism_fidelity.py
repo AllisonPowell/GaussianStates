@@ -1796,8 +1796,8 @@ def fidelity_vs_site(
 
 N = 10           # Number of sites in the ring
 M = 2000        # Number of trajectories (samples)
-params = {'m_squared': 2, 'k_coupling': 5, "momentum":1,'lam': 0.4, 'N_site': N}        # Total simulation time
-t0 = 2.2
+params = {'m_squared': 13, 'k_coupling': 5, "momentum":1,'lam': 0.4, 'N_site': N}        # Total simulation time
+t0 = 4
 t_couple = 3
 dt = .005        # Time step
 steps = int(t0 / dt)
@@ -1807,12 +1807,10 @@ insert_idx = 1
 
 
 #Gamma_TFD = tfd_cov(N,k=params["k_coupling"],m_squared=params["m_squared"])
+
 Gamma_TFD = tfd_cov_ring_from_normal_modes(N, params["k_coupling"], params["m_squared"], beta=1, eps_omega=1e-15)
-
-
 q,p = sample_tfd_state(Gamma_TFD, M, N)
 state_TFD = (q, p)
-
 
 
 site_fidelities_symp=[]
@@ -1836,6 +1834,7 @@ input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, determini
 
 sites=np.arange(N,2*N)
 
+"""
 Fs,Ff = fidelity_vs_site(
     insert_idx,
     input_ensemble,
@@ -1854,16 +1853,16 @@ plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.legend()
 plt.show()
+"""
+#print("done")
 
-print("done")
 
 
-
-lambda_vals = np.linspace(0,.5,10)
+lambda_vals = np.linspace(0,6,30)
 lam_fid_symp = []
 lam_fid_flip = []
 for lam in lambda_vals:
-    params = {'m_squared': 2, 'k_coupling': 5, "momentum":1,'lam': lam, 'N_site': N}   
+    params = {'m_squared': 13, 'k_coupling': 5, "momentum":1,'lam': lam, 'N_site': N}   
     Fs,Ff = fidelity_vs_site(
     insert_idx,
     input_ensemble,   # list of (s, theta) you use for fitting
@@ -1878,11 +1877,12 @@ for lam in lambda_vals:
     lam_fid_symp.append(Fs[insert_idx])
     lam_fid_flip.append(Ff[insert_idx])
 
-plt.plot(lambda_vals,lam_fid_symp)
+#plt.plot(lambda_vals,lam_fid_symp)
 plt.plot(lambda_vals,lam_fid_flip)
 plt.xlabel("added non-gaussianity")
 plt.ylabel("fidelity")
-plt.show()
+plt.savefig("plots/fidelity_vs_lam.pdf")
+#plt.show()
 
 
 """
