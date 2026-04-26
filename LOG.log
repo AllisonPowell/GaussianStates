@@ -1,0 +1,16 @@
+2026-04-26 16:56:50,570 INFO Config: Config(N=3, Nmax=4, beta=1.0, m2=13.0, k=6.0, lam=0.0, g=1.0, dt=0.05, t_scramble=0.5, t_couple=0.5, n_squeeze=2, n_theta=2, squeeze_range=0.6)
+2026-04-26 16:56:50,571 INFO Building ring Hamiltonian (N=3, Nmax=4) ...
+2026-04-26 16:56:50,604 INFO Building TFD tensor (beta=1.00) ...
+2026-04-26 16:56:50,628 INFO Applying backward modular evolution (t=0.50) ...
+2026-04-26 16:56:50,778 INFO Ensemble size: 4
+2026-04-26 16:56:50,778 INFO Running ensemble of 4 input states ...
+2026-04-26 16:56:50,782 INFO   [1/4] s=-0.600 theta=0.000
+2026-04-26 16:57:05,488 INFO   [2/4] s=-0.600 theta=3.142
+2026-04-26 16:57:20,215 INFO   [3/4] s=0.600 theta=0.000
+2026-04-26 16:57:34,953 INFO   [4/4] s=0.600 theta=3.142
+2026-04-26 16:57:50,257 INFO Fitting Gaussian channels ...
+2026-04-26 16:57:50,287 INFO   right-ring site 3: F_symp=0.4107  F_flip=0.4188
+2026-04-26 16:57:50,308 INFO   right-ring site 4: F_symp=0.1425  F_flip=0.1425
+2026-04-26 16:57:50,316 INFO   right-ring site 5: F_symp=0.4107  F_flip=0.4188
+2026-04-26 16:57:50,837 INFO Saved plot to plots/site_vs_fidelity.pdf
+2026-04-26 16:57:50,837 INFO done

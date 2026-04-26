@@ -1562,7 +1562,7 @@ def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
     return psi
 
 
-def fidelity_vs_site_old(
+def fidelity_vs_site(
     insert_idx,
     input_ensemble,  # list of (s, theta) you use for fitting
     N,
@@ -1579,7 +1579,11 @@ def fidelity_vs_site_old(
         # Run your usual protocol (NO observer) to get global Gamma_final
         psi_out = teleportation_protocol(s,theta,N,Nmax,insert_idx,psi_tensor)
         Vout = covariance_matrix_from_mps(psi_out,2*N+1,Nmax)   
-            
+
+        for i in range(2*N+1):
+            probs = local_number_distribution_from_mps(psi_out, i)
+            print(f"site {i}: <n> = {sum(n*p for n,p in enumerate(probs)):.4f}, "f"P(Nmax) = {probs[-1]:.4e}, P(Nmax-1) = {probs[-2]:.4e}")
+
         Vins.append(covariance_from_single_mode_state(gaussian_mode(Nmax=Nmax,r=s,theta=theta),Nmax))
         for i in range(N):
             Vouts[i].append(extract_subsystem_covariance(Vout,[i+N+1]))
@@ -1684,6 +1688,7 @@ def fidelity_vs_site_old(
     return fid_symp,fid_flip
 
 
+"""
 N=3
 Nmax=9
 beta = 1.0
@@ -1744,7 +1749,7 @@ plt.ylabel("fidelity")
 plt.legend()
 plt.savefig("plots/site_vs_fidelity.pdf")
 # plt.show()
-
+"""
 """
 plt.xlabel("decoder block size")
 plt.ylabel("fidelity")
@@ -1790,7 +1795,7 @@ plt.legend()
 plt.savefig("plots/time_vs_fidelity.pdf")
 """
 
-log_print("done")
+#log_print("done")
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -3438,7 +3443,7 @@ def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
     return psi
 
 
-def fidelity_vs_site(
+def fidelity_vs_site_error(
     insert_idx,
     input_ensemble,  # list of (s, theta) you use for fitting
     N,
