@@ -614,7 +614,7 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
 #bdy_1_idx = np.array([lookup[x] for x in bdy_1])
 #bdy_2_idx = np.array([lookup[x] for x in bdy_2])
 
-N = 10
+N = 3
 bdy_len = N
 bdy_1_idx = np.arange(bdy_len)
 bdy_2_idx = np.arange(bdy_len,2*bdy_len)
@@ -839,7 +839,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        t0 = 4
+        t0 = 2
         #t0 = 59
 
 
@@ -3082,7 +3082,7 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 10
+N = 3
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N

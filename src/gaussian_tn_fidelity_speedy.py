@@ -48,7 +48,7 @@ class Config:
     beta: float = 1.0   # inverse temperature
     # Hamiltonian
     m2: float = 13.0    # mass squared
-    k: float = 6.0      # hopping / spring constant
+    k: float = 5.0      # hopping / spring constant
     lam: float = 0.0    # quartic coupling
     g: float = 1.0      # wormhole coupling strength
     # Time evolution
