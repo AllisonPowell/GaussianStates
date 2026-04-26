@@ -1562,7 +1562,7 @@ def teleportation_protocol(s, theta, N, Nmax, insert_idx, psi_tensor):
     return psi
 
 
-def fidelity_vs_site(
+def fidelity_vs_site_old(
     insert_idx,
     input_ensemble,  # list of (s, theta) you use for fitting
     N,
