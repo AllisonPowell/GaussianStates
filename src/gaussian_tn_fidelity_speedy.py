@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 class Config:
     # System
     N: int = 3          # sites per ring
-    Nmax: int = 8       # bosonic truncation (Fock cutoff)
+    Nmax: int = 9       # bosonic truncation (Fock cutoff)
     beta: float = 1.0   # inverse temperature
     # Hamiltonian
     m2: float = 13.0    # mass squared
