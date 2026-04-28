@@ -64,7 +64,7 @@ class Config:
     # rotation (no dense d^N×d^N H). Falls back to ``build_tfd_tensor`` if disabled or too large.
     use_normal_mode_tfd: bool = True
     # Use symmetric Trotter on each ring during scramble/unscramble (interleaved layout).
-    second_order_ring_tebd: bool = True
+    second_order_ring_tebd: bool = False
 
 
 # Maximal single-particle Fock dimension (Nmax+1)^N allowed for normal-mode passive rotation.
