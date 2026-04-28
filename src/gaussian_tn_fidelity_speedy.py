@@ -74,7 +74,7 @@ _PASSIVE_UNITARY_MAX_DIM = 8000
 # Preset configs for quick local testing vs full server runs
 QUICK = Config(N=3, Nmax=4, t_scramble=0.5, t_couple=0.5, n_squeeze=2, n_theta=2)
 FULL  = Config()
-CUTE_CONFFIG = Config(N=3, Nmax=8, t_scramble=2, t_couple=3, n_squeeze=4, n_theta=3)
+CUTE_CONFFIG = Config(N=3, Nmax=10, t_scramble=2, t_couple=3, n_squeeze=4, n_theta=3)
 
 
 
