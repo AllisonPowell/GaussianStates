@@ -843,7 +843,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         #t0 = 2
         #t0=59
-        t0 = 1.3
+        t0 = 2
 
 
     else:
@@ -3085,7 +3085,7 @@ site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 4
+N = 3
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
@@ -3250,7 +3250,7 @@ mut_info_vs_segments(s=0,theta=0,n_one_side=64,center_idx_telep=32,m=8,insert_id
 #######
 
 
-
+"""
 
 #block_sizes = [1,2,4,8,12,16,20,24,28,30,31,32,33,34,36,40,44,48,52,56,60,64]
 #block_sizes = [1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64]
@@ -3259,7 +3259,7 @@ obs_idx = 128
 insert_idx = 32
 teleported_idx = 1 + 3
 bdy_len = 1
-"""
+
 input_ensemble = [(0.0,0), (.5,0), (-.5,np.pi/4),
                  (1,np.pi/4), (-1,np.pi/2), (.4,np.pi/2)]
 """
@@ -3271,7 +3271,7 @@ for i in range(60):
 """
 
 
-
+"""
 Fs,Ff,F_passive_symp_test,F_passive_flip_test,s1_Y_on,s2_Y_on= fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=3,center_idx=10,wormhole=False)
 
 
@@ -3296,7 +3296,7 @@ plt.ylabel("singular value/noise")
 plt.title("Singular Values vs. Decoder Block Size")
 plt.legend()
 plt.show()
-
+"""
 """
 plt.plot(block_sizes, s2_Y_on, marker='o',label="coupling")
 plt.plot(block_sizes, s2_Y_off, marker='o',label="no coupling")
@@ -3318,7 +3318,7 @@ plt.show()
 """
 
 #plt.rc('font', size=25) 
-
+"""
 plt.plot(block_sizes, Fs, marker='o',label="symplectic")
 plt.plot(block_sizes, Ff, marker='o',label="allow flip")
 #plt.plot(block_sizes, Fa, marker='o',label="active")
@@ -3344,7 +3344,7 @@ plt.ylabel("fidelity")
 plt.title("Fidelity vs. Decoder Block Size Test")
 plt.legend()
 plt.show()
-
+"""
 """
 plt.plot(block_sizes, dXp, marker='o',label="dX")
 plt.plot(block_sizes, dYp, marker='o',label="dY")

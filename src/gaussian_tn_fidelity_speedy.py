@@ -2,11 +2,12 @@
 """
 Wormhole teleportation fidelity via Gaussian TN.
 
-Usage:
-    python gaussian_tn_fidelity.py                  # full run (default params)
-    python gaussian_tn_fidelity.py --quick          # small-scale sanity check
-    python gaussian_tn_fidelity.py --N 4 --Nmax 10  # custom params
-    python gaussian_tn_fidelity.py --help
+MPS sites use interleaved order ``L0,R0,L1,R1,...`` so each ``L_i–R_i`` pair is adjacent
+(wormhole bonds are local). Run with the ``gaussian`` conda env (TenPy + QuTiP), e.g.:
+
+    conda activate gaussian
+    python src/gaussian_tn_fidelity_speedy.py --quick
+    python src/gaussian_tn_fidelity_speedy.py --N 4 --Nmax 10
 """
 
 # ── Imports ──────────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Ellipse
-from scipy.linalg import block_diag, det, eigh, expm, schur, sqrtm
+from scipy.linalg import block_diag, det, eigh, expm, logm, schur, sqrtm
 from tenpy.linalg import np_conserved as npc
 from tenpy.networks.mps import MPS
 from tenpy.networks.site import BosonSite
@@ -44,7 +45,7 @@ log = logging.getLogger(__name__)
 class Config:
     # System
     N: int = 3          # sites per ring
-    Nmax: int = 12     # bosonic truncation (Fock cutoff)
+    Nmax: int = 11       # bosonic truncation (Fock cutoff)
     beta: float = 1.0   # inverse temperature
     # Hamiltonian
     m2: float = 13.0    # mass squared
@@ -59,11 +60,22 @@ class Config:
     n_squeeze: int = 4          # number of squeezing values
     n_theta: int = 3            # number of phase angles
     squeeze_range: float = 0.6  # squeezing sampled in [-r, r]
+    # Initial state: build quadratic TFD via ⊗_k thermo doubles in normal modes + passive
+    # rotation (no dense d^N×d^N H). Falls back to ``build_tfd_tensor`` if disabled or too large.
+    use_normal_mode_tfd: bool = True
+    # Use symmetric Trotter on each ring during scramble/unscramble (interleaved layout).
+    second_order_ring_tebd: bool = True
+
+
+# Maximal single-particle Fock dimension (Nmax+1)^N allowed for normal-mode passive rotation.
+_PASSIVE_UNITARY_MAX_DIM = 8000
 
 
 # Preset configs for quick local testing vs full server runs
 QUICK = Config(N=3, Nmax=4, t_scramble=0.5, t_couple=0.5, n_squeeze=2, n_theta=2)
 FULL  = Config()
+CUTE_CONFFIG = Config(N=3, Nmax=8, t_scramble=2, t_couple=3, n_squeeze=4, n_theta=3)
+
 
 
 # ── Gaussian state utilities ──────────────────────────────────────────────────
@@ -436,6 +448,116 @@ def build_tfd_tensor(H_side, Nsites, Nmax, beta):
     return C.reshape([d] * Nsites + [d] * Nsites)
 
 
+def ring_coupling_matrix(N, m2, k):
+    """Neighbor hopping matrix V for H_quad = sum_ij V_ij x_i x_j (+ momenta)."""
+    V = np.zeros((N, N), dtype=float)
+    for i in range(N):
+        V[i, i] = m2 + 2 * k
+        V[i, (i + 1) % N] = -k
+        V[i, (i - 1) % N] = -k
+    return sym(V)
+
+
+def thermo_field_double_pair_matrix(Nmax, omega, beta):
+    """Truncated |TFD⟩ diagonal on |n,n⟩ with P(n) ∝ e^{-βω n} / Z on each mode."""
+    d = Nmax + 1
+    beta_w = beta * omega
+    tail = np.exp(-beta_w * np.arange(d))
+    Z = tail.sum()
+    coeffs = np.sqrt(tail / Z).astype(complex)
+    psi = np.zeros((d, d), dtype=complex)
+    np.fill_diagonal(psi, coeffs)
+    return psi
+
+
+def passive_fock_unitary_first_quantization(O: np.ndarray, Nmax: int) -> np.ndarray:
+    """Second-quantized passive (particle-number conserving) unitary from orthogonal O.
+
+    Uses U_Fock = exp(K) with K_{ij} = (log O)_{ij} antisymmetrized (real orthogonal O).
+    Requires ``import qutip``.
+    """
+    import qutip as qt
+
+    O = np.asarray(O, dtype=float)
+    N = O.shape[0]
+    d = Nmax + 1
+    K = np.real(logm(O.astype(complex)))
+    K = (K - K.T) / 2.0
+    a_list = []
+    for i in range(N):
+        ops = [qt.qeye(d) for _ in range(N)]
+        ops[i] = qt.destroy(d)
+        a_list.append(qt.tensor(ops))
+    Hgen = qt.Qobj(np.zeros([d**N] * 2, dtype=complex), dims=[[d] * N] * 2)
+    for i in range(N):
+        for j in range(N):
+            Hgen += K[i, j] * (a_list[i].dag() * a_list[j])
+    U = Hgen.expm()
+    return np.asarray(U.full(), dtype=complex)
+
+
+def tensor_product_pair_states(pair_tensors):
+    """Outer product of disjoint two-site tensors with axes order L0,R0,L1,R1, ..."""
+    out = pair_tensors[0]
+    for k in range(1, len(pair_tensors)):
+        out = np.tensordot(out, pair_tensors[k], axes=0)
+    return out
+
+
+def mode_interleaved_to_lr_blocks(T: np.ndarray, N: int) -> np.ndarray:
+    """[m0_L,m0_R,m1_L,m1_R,...] → [m0_L,...,m_{N-1}_L, m0_R,...,m_{N-1}_R]."""
+    assert T.ndim == 2 * N
+    order = list(range(0, 2 * N, 2)) + list(range(1, 2 * N, 2))
+    return np.transpose(T, order)
+
+
+def permute_lr_block_to_interleaved(T: np.ndarray, N: int) -> np.ndarray:
+    """[L0,...,L_{N-1}, R0,...,R_{N-1}] → [L0,R0,L1,R1,...]."""
+    order = []
+    for i in range(N):
+        order.append(i)
+        order.append(N + i)
+    return np.transpose(T, order)
+
+
+def apply_passive_LR_site_basis(M_mode: np.ndarray, O: np.ndarray, Nmax: int) -> np.ndarray:
+    """Transform LR coefficient matrix from normal-mode to site tensor-product basis."""
+    N = O.shape[0]
+    d = Nmax + 1
+    U = passive_fock_unitary_first_quantization(O, Nmax)
+    return U @ M_mode @ U.T
+
+
+def build_tfd_tensor_normal_modes(N: int, Nmax: int, m2: float, k: float, beta: float):
+    """Quadratic-ring TFD as ⊗_k |TFD(ω_k)⟩ in normal modes, rotated to site basis.
+
+    Avoids constructing the dense d^N × d^N Hamiltonian or its spectrum. Still forms a
+    full rank-(d^{2N}) tensor for ``tensor_to_mps`` (same memory footprint as
+    ``build_tfd_tensor``); CPU cost is dominated by two Fock-space rotations O(d^{3N}).
+
+    Raises ``MemoryError`` if ``(Nmax+1)**N`` exceeds ``_PASSIVE_UNITARY_MAX_DIM``.
+    """
+    d = Nmax + 1
+    dim_single = d**N
+    if dim_single > _PASSIVE_UNITARY_MAX_DIM:
+        raise MemoryError(
+            f"normal-mode passive rotation dimension {dim_single} exceeds "
+            f"_PASSIVE_UNITARY_MAX_DIM={_PASSIVE_UNITARY_MAX_DIM}; reduce N or Nmax "
+            "or increase the limit after confirming available RAM."
+        )
+
+    V = ring_coupling_matrix(N, m2, k)
+    omega2, O = np.linalg.eigh(V)
+    omega = np.sqrt(np.maximum(omega2, 0.0))
+
+    pairs = [thermo_field_double_pair_matrix(Nmax, omega[k], beta) for k in range(N)]
+    T_mode_LR = tensor_product_pair_states(pairs)
+    T_block = mode_interleaved_to_lr_blocks(T_mode_LR, N)
+    M = T_block.reshape(dim_single, dim_single)
+    M_site = apply_passive_LR_site_basis(M, O, Nmax)
+    return M_site.reshape([d] * (2 * N))
+
+
 # ── State preparation helpers ─────────────────────────────────────────────────
 
 def gaussian_mode(Nmax, r=0.5, theta=0.0):
@@ -568,6 +690,16 @@ def SWAP_gate(Nmax):
     return U
 
 
+def site_left_interleaved(k: int) -> int:
+    """Physical MPS index of left-ring site ``k`` (interleaved layout ``L0,R0,L1,R1,...``)."""
+    return 2 * k
+
+
+def site_right_interleaved(k: int) -> int:
+    """Physical MPS index of right-ring site ``k``."""
+    return 2 * k + 1
+
+
 # ── TEBD gate application ─────────────────────────────────────────────────────
 
 def apply_one_site(psi, i, U):
@@ -651,6 +783,47 @@ def tebd_step_coupled(psi, N, insert_idx, U1, U2, Uc, Nmax):
         apply_coupling_bond(psi, i, N + i, Uc, Nmax)
 
 
+def tebd_step_interleaved_ring_side(psi, side: str, U1, U2, N: int, Nmax: int):
+    """One first-order ring Trotter step on ``left`` or ``right`` interleaved subchain."""
+    P = site_left_interleaved if side == "left" else site_right_interleaved
+    for j in range(N):
+        apply_one_site(psi, P(j), U1)
+    for j in range(0, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2, Nmax)
+    for j in range(1, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2, Nmax)
+    apply_coupling_bond(psi, P(N - 1), P(0), U2, Nmax)
+
+
+def tebd_step_interleaved_ring_side_2nd_order(
+        psi, side: str, U1_half, U2_half, U2_full, N: int, Nmax: int):
+    """Symmetric Trotter step on one interleaved ring (matches ``tebd_step_ring_2nd_order``)."""
+    P = site_left_interleaved if side == "left" else site_right_interleaved
+    for j in range(N):
+        apply_one_site(psi, P(j), U1_half)
+    for j in range(0, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2_half, Nmax)
+    for j in range(1, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2_half, Nmax)
+    apply_coupling_bond(psi, P(N - 1), P(0), U2_full, Nmax)
+    for j in range(1, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2_half, Nmax)
+    for j in range(0, N - 1, 2):
+        apply_coupling_bond(psi, P(j), P(j + 1), U2_half, Nmax)
+    for j in range(N):
+        apply_one_site(psi, P(j), U1_half)
+
+
+def tebd_step_coupled_interleaved(psi, N, insert_idx, U1, U2, Uc, Nmax):
+    """Coupling Trotter step: both rings + adjacent L_i–R_i wormhole bonds (no SWAP)."""
+    tebd_step_interleaved_ring_side(psi, "left", U1, U2, N, Nmax)
+    tebd_step_interleaved_ring_side(psi, "right", U1, U2, N, Nmax)
+    for i in range(N):
+        if i == insert_idx:
+            continue
+        apply_two_site_adjacent(psi, site_left_interleaved(i), Uc)
+
+
 def evolve_with_coupling(psi, N, insert_idx, t_couple, dt, Nmax, g, m2, k, lam):
     omega0 = np.sqrt(m2 + 2 * k)
     U1 = onsite_unitary(Nmax, dt, m2, k, lam)
@@ -658,7 +831,7 @@ def evolve_with_coupling(psi, N, insert_idx, t_couple, dt, Nmax, g, m2, k, lam):
     Uc = wormhole_unitary(Nmax, dt, g, omega0)
     steps = int(t_couple / dt)
     for _ in tqdm(range(steps), desc="  coupling", leave=False):
-        tebd_step_coupled(psi, N, insert_idx, U1, U2, Uc, Nmax)
+        tebd_step_coupled_interleaved(psi, N, insert_idx, U1, U2, Uc, Nmax)
 
 
 # ── Teleportation protocol ────────────────────────────────────────────────────
@@ -670,17 +843,28 @@ def teleportation_protocol(s, theta, insert_idx, cfg, psi_tensor):
     Inserts a Gaussian mode (squeezed by s, rotated by theta) at insert_idx,
     scrambles the left ring, applies wormhole coupling, then unscrambles
     the right ring.
+
+    MPS sites use **interleaved** order (``L0,R0,L1,R1,...``); ``insert_idx`` is still the
+    **left** ring label ``i``, applied on physical tensor axis ``2*i``.
     """
     phi = gaussian_mode(cfg.Nmax, r=s, theta=theta)
-    psi_insert = insert_with_env(psi_tensor, insert_idx, phi)
+    insert_axis = site_left_interleaved(insert_idx)
+    psi_insert = insert_with_env(psi_tensor, insert_axis, phi)
     psi = tensor_to_mps(psi_insert, cfg.Nmax)
 
     U1 = onsite_unitary(cfg.Nmax, cfg.dt, cfg.m2, cfg.k, cfg.lam)
     U2 = bond_unitary(cfg.Nmax, cfg.dt, cfg.k)
+    U1_half = onsite_unitary(cfg.Nmax, cfg.dt / 2, cfg.m2, cfg.k, cfg.lam)
+    U2_half = bond_unitary(cfg.Nmax, cfg.dt / 2, cfg.k)
     steps = int(cfg.t_scramble / cfg.dt)
 
-    for _ in tqdm(range(steps), desc="  scramble L", leave=False):
-        tebd_step_ring(psi, 0, cfg.N, U1, U2, cfg.N, cfg.Nmax)
+    if cfg.second_order_ring_tebd:
+        for _ in tqdm(range(steps), desc="  scramble L", leave=False):
+            tebd_step_interleaved_ring_side_2nd_order(
+                psi, "left", U1_half, U2_half, U2, cfg.N, cfg.Nmax)
+    else:
+        for _ in tqdm(range(steps), desc="  scramble L", leave=False):
+            tebd_step_interleaved_ring_side(psi, "left", U1, U2, cfg.N, cfg.Nmax)
 
     evolve_with_coupling(
         psi, cfg.N, insert_idx,
@@ -688,8 +872,13 @@ def teleportation_protocol(s, theta, insert_idx, cfg, psi_tensor):
         cfg.g, cfg.m2, cfg.k, cfg.lam,
     )
 
-    for _ in tqdm(range(steps), desc="  unscramble R", leave=False):
-        tebd_step_ring(psi, cfg.N, 2 * cfg.N, U1, U2, cfg.N, cfg.Nmax)
+    if cfg.second_order_ring_tebd:
+        for _ in tqdm(range(steps), desc="  unscramble R", leave=False):
+            tebd_step_interleaved_ring_side_2nd_order(
+                psi, "right", U1_half, U2_half, U2, cfg.N, cfg.Nmax)
+    else:
+        for _ in tqdm(range(steps), desc="  unscramble R", leave=False):
+            tebd_step_interleaved_ring_side(psi, "right", U1, U2, cfg.N, cfg.Nmax)
 
     return psi
 
@@ -715,16 +904,17 @@ def fidelity_vs_site(insert_idx, input_ensemble, cfg, psi_tensor):
         psi_out = teleportation_protocol(s, theta, insert_idx, cfg, psi_tensor)
 
         # truncation check — warn if population leaks to Nmax
-        for i in range(2 * cfg.N + 1):
+        for i in range(2 * cfg.N):
             probs = local_number_distribution_from_mps(psi_out, i)
             print(f"site {i}: <n> = {sum(n*p for n,p in enumerate(probs)):.4f}, "f"P(Nmax) = {probs[-1]:.4e}, P(Nmax-1) = {probs[-2]:.4e}")
 
 
-        Vout = covariance_matrix_from_mps(psi_out, 2 * cfg.N + 1, cfg.Nmax)
+        Vout = covariance_matrix_from_mps(psi_out, 2 * cfg.N, cfg.Nmax)
         Vins.append(covariance_from_single_mode_state(
             gaussian_mode(Nmax=cfg.Nmax, r=s, theta=theta), cfg.Nmax))
         for i in range(cfg.N):
-            Vouts[i].append(extract_subsystem_covariance(Vout, [i + cfg.N]))
+            Vouts[i].append(extract_subsystem_covariance(
+                Vout, [site_right_interleaved(i)]))
 
     log.info("Fitting Gaussian channels ...")
     fid_symp, fid_flip = [], []
@@ -734,7 +924,9 @@ def fidelity_vs_site(insert_idx, input_ensemble, cfg, psi_tensor):
         Ff = entanglement_fidelity_gaussian(X, Y, decoder_from_X_flip(X),       subtract_Y=False)
         fid_symp.append(Fs)
         fid_flip.append(Ff)
-        log.info("  right-ring site %d: F_symp=%.4f  F_flip=%.4f", i + cfg.N, Fs, Ff)
+        log.info(
+            "  right-ring site %d (phys %d): F_symp=%.4f  F_flip=%.4f",
+            i, site_right_interleaved(i), Fs, Ff)
 
     return fid_symp, fid_flip
 
@@ -742,18 +934,31 @@ def fidelity_vs_site(insert_idx, input_ensemble, cfg, psi_tensor):
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def build_initial_state(cfg):
-    """Build the backward-scrambled TFD tensor."""
+    """Build the backward-scrambled TFD tensor (interleaved site order for the MPS)."""
+    d = cfg.Nmax + 1
+    dim_single = d ** cfg.N
+
     log.info("Building ring Hamiltonian (N=%d, Nmax=%d) ...", cfg.N, cfg.Nmax)
     H_quad = build_ring_H(cfg.N, cfg.Nmax, cfg.m2, cfg.k, cfg.lam)
 
-    log.info("Building TFD tensor (beta=%.2f) ...", cfg.beta)
-    psi_tensor = build_tfd_tensor(H_quad, cfg.N, cfg.Nmax, cfg.beta)
+    if cfg.use_normal_mode_tfd and dim_single <= _PASSIVE_UNITARY_MAX_DIM:
+        log.info("Building TFD tensor via normal modes + passive rotation (beta=%.2f) ...", cfg.beta)
+        try:
+            psi_block = build_tfd_tensor_normal_modes(
+                cfg.N, cfg.Nmax, cfg.m2, cfg.k, cfg.beta)
+        except Exception as exc:
+            log.warning("Normal-mode TFD failed (%s); falling back to dense H spectrum.", exc)
+            psi_block = build_tfd_tensor(H_quad, cfg.N, cfg.Nmax, cfg.beta)
+    else:
+        log.info("Building TFD tensor from dense H spectrum (beta=%.2f) ...", cfg.beta)
+        psi_block = build_tfd_tensor(H_quad, cfg.N, cfg.Nmax, cfg.beta)
 
     log.info("Applying backward modular evolution (t=%.2f) ...", cfg.t_scramble)
     U_back = expm(1j * cfg.t_scramble * H_quad)
-    psi_left = psi_tensor.reshape((cfg.Nmax + 1)**cfg.N, -1)
-    psi_left = U_back @ psi_left
-    return psi_left.reshape([cfg.Nmax + 1] * (2 * cfg.N))
+    psi_mat = psi_block.reshape(dim_single, dim_single)
+    psi_mat = U_back @ psi_mat
+    psi_block = psi_mat.reshape([d] * (2 * cfg.N))
+    return permute_lr_block_to_interleaved(psi_block, cfg.N)
 
 
 def main():
@@ -763,6 +968,8 @@ def main():
     )
     parser.add_argument("--quick",  action="store_true",
                         help="Small-scale run for local testing (N=3, Nmax=4, short times)")
+    parser.add_argument("--cute-config",  action="store_true",
+                        help="Cute configuration (N=3, Nmax=4, t_scramble=2, t_couple=3, n_squeeze=4, n_theta=3)")
     # Override any Config field individually
     parser.add_argument("--N",             type=int,   help="Sites per ring")
     parser.add_argument("--Nmax",          type=int,   help="Bosonic truncation")
@@ -779,15 +986,24 @@ def main():
     parser.add_argument("--squeeze-range", type=float, dest="squeeze_range")
     parser.add_argument("--insert-idx",    type=int,   dest="insert_idx", default=1)
     parser.add_argument("--output",        default="plots/site_vs_fidelity.pdf")
+    parser.add_argument("--dense-h-tfd", action="store_true",
+                        help="Build initial TFD from dense H spectrum instead of normal modes")
+    parser.add_argument("--first-order-tebd", action="store_true",
+                        help="Use first-order ring Trotter for scramble/unscramble")
     args = parser.parse_args()
 
-    cfg = QUICK if args.quick else FULL
+    cfg = QUICK if args.quick else CUTE_CONFFIG if args.cute_config else FULL
     # Apply any explicit overrides
     for field in ["N", "Nmax", "beta", "m2", "k", "lam", "g", "dt",
                   "t_scramble", "t_couple", "n_squeeze", "n_theta", "squeeze_range"]:
         val = getattr(args, field, None)
         if val is not None:
             setattr(cfg, field, val)
+
+    if args.dense_h_tfd:
+        cfg.use_normal_mode_tfd = False
+    if args.first_order_tebd:
+        cfg.second_order_ring_tebd = False
 
     log.info("Config: %s", cfg)
 
@@ -801,7 +1017,7 @@ def main():
     Fs, Ff = fidelity_vs_site(args.insert_idx, input_ensemble, cfg, psi_tensor)
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    sites = np.arange(cfg.N, 2 * cfg.N)
+    sites = np.array([site_right_interleaved(i) for i in range(cfg.N)])
     plt.figure()
     plt.plot(sites, Fs, marker="o", label="symplectic decoder")
     plt.plot(sites, Ff, marker="s", label="flip decoder")
