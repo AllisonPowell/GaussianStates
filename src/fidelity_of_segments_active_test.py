@@ -841,9 +841,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        #t0 = 2
-        #t0=59
-        t0 = 2
+        t0 = 1.4
 
 
     else:
@@ -946,7 +944,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0 = 4
+        t0=4
 
 
     ############
@@ -1057,6 +1055,8 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
 
     Gamma_teleported = extract_mode_block(Gamma_final, teleported_idx)
+
+    #Gamma_final = measure_left_side(Gamma_final,n_one_side)
 
 
     Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
@@ -2591,7 +2591,7 @@ def teleport_test(s,theta,n_one_side,center_idx,m):
 
     Gamma_TFD = gaussian_purification(Gamma_reconstructed)
 
-    t0 = 4
+    t0=4
 
     n = Gamma_TFD.shape[0] // 2
     bdy_len = Gamma_TFD.shape[0] // 4
@@ -2716,7 +2716,33 @@ def teleport_test(s,theta,n_one_side,center_idx,m):
 # End Test
 ########
 
+def measure_left_side(Gamma,bdy_len):
+    n = Gamma.shape[0]//2
+    na = bdy_len
+    Gamma_AA = np.zeros((2*na,2*na))
 
+    Gamma_AA = np.zeros((2*na,2*na))
+    for i in range(1,3):
+        for j in range(1,3):
+
+            Gamma_AA[i*na-na:i*na,j*na-na:j*na]=Gamma[i*n-na:i*n,j*n-na:j*n]
+       
+    Gamma_BB = np.zeros((2*na,2*na))
+    for i in range(2):
+        for j in range(2):
+            Gamma_BB[i*na:i*na+na,j*na:j*na+na]=Gamma[i*n:i*n+na,j*n:j*n+na]
+
+    Gamma_AB = np.zeros((2*na,2*na))
+
+    for i in range(1,3):
+        for j in range(2):
+            Gamma_AB[i*na-na:i*na,j*na:j*na+na]=Gamma[i*n-na:i*n,j*n:j*n+na]
+
+    m = Gamma_BB.shape[0]//2
+    P = momentum_projection_matrix(m)
+    V_bdy = Gamma_AA - Gamma_AB @ np.linalg.pinv(P @ Gamma_BB @ P) @ Gamma_AB.T
+
+    return V_bdy
 
 
 
@@ -3046,6 +3072,7 @@ def fidelity_vs_site(
         Vins.append(make_input_covariance(s,theta))
         for i in range(N):
             Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i+N]))
+            #Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i]))
         
 
         # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
@@ -3084,8 +3111,9 @@ site_fidelities_symp=[]
 site_fidelities_flip=[]
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
+# t0 =
 
-N = 3
+N = 4
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
@@ -3113,12 +3141,15 @@ plt.legend()
 plt.show()
 """    
 
-plt.plot(sites,Fs,label="symplectic")
+#plt.plot(sites,Fs,label="symplectic")
 plt.plot(sites,Ff,label="allow flip")
 plt.xlabel("site")
 plt.ylabel("fidelity")
-plt.legend()
+#plt.legend()
 plt.show()
+
+
+
 
 print("done")
 

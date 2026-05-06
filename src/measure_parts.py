@@ -222,6 +222,43 @@ def measure_left_side(Gamma,bdy_len):
 
     return V_bdy
 
+def measure_sites(Gamma,meas_sites):
+    #rearrange   
+    n=Gamma.shape[0]//2
+    un_sites = list(np.setdiff1d(np.arange(n-1),meas_sites))
+    nb = len(meas_sites)
+    na = len(un_sites)
+    meas_sites_p = [i + n for i in meas_sites]
+    un_sites_p = [i + n for i in un_sites]
+    total_idx_new = [0]+un_sites+meas_sites+[n]+un_sites_p+meas_sites_p
+    Gamma_new=Gamma[np.ix_(np.array(total_idx_new),np.array(total_idx_new))]
+    
+    # define each block
+    Gamma_AA = np.zeros((2*na+2,2*na+2))
+    NA = na+1
+    for i in range(2):
+        for j in range(2):
+            Gamma_AA[i*NA:i*NA+NA,j*NA:j*NA+NA]=Gamma[i*n:i*n+NA,j*n:j*n+NA]
+       
+    Gamma_BB = np.zeros((2*nb,2*nb))
+    for i in range(1,3):
+        for j in range(1,3):
+            Gamma_BB[i*nb-nb:i*nb,j*nb-nb:j*nb]=Gamma[i*n-nb:i*n,j*n-nb:j*n]
+
+    Gamma_AB = np.zeros((2*na+2,2*nb))
+
+    for i in range(2):
+        for j in range(1,3):
+            Gamma_AB[i*NA:i*NA+NA,j*nb-nb:j*nb]=Gamma[i*n:i*n+NA,j*n-nb:j*n]
+
+    # perform measurement
+    m = Gamma_BB.shape[0]//2
+    P = momentum_projection_matrix(m)
+    V_bdy = Gamma_AA - Gamma_AB @ np.linalg.pinv(P @ Gamma_BB @ P) @ Gamma_AB.T
+
+    return V_bdy  
+
+
 def von_neumann_entropy_alt(Gamma):
     n = Gamma.shape[0] // 2
     Omega = np.block([
@@ -418,7 +455,8 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
 
 def teleport(probe_site,n_tube,r):
     # Parameters
-    L = 9
+    L = 11
+    #L = 8
     Lh = 5
     g_tube = 1
     mu_s = 1
@@ -467,6 +505,50 @@ def teleport(probe_site,n_tube,r):
                     A_tot[i + offset, i + offset + 1] = A_tot[i + offset + 1, i + offset] = g_tube
                 else:
                     A_tot[i + offset, i + offset - (2**(Lh - 1) - 1)] = A_tot[i + offset - (2**(Lh - 1) - 1), i + offset] = g_tube
+
+    #Make hole:
+
+    #A_tot[94:98,:]=0
+    #A_tot[:,94:98]=0
+
+
+    #A_tot[92:100,:]=0
+    #A_tot[:,92:100]=0
+
+    #A_tot[90:102,:]=0
+    #A_tot[:,90:102]=0
+
+
+    #A_tot[86:106,:]=0
+    #A_tot[:,86:106]=0
+
+    #A_tot[54:74,:]=0
+    #A_tot[:,54:74]=0   
+
+    #A_tot[60:70,:]=0
+    #A_tot[:,60:70]=0
+    #A_tot[90:100,:]=0
+    #A_tot[:,90:100]=0 
+
+    #A_tot[48:70,:]=0
+    #A_tot[:,48:70]=0
+    #A_tot[90:112,:]=0
+    #_tot[:,90:112]=0
+
+
+    #A_tot[75:85,:]=0
+    #A_tot[:,75:85]=0
+
+
+
+    #A_tot[165:170,:]=0
+    #A_tot[:,165:170]=0    
+    #A_tot[182:188,:]=0
+    #A_tot[:,182:188]=0   
+
+    #A_tot[496:512,:]=0
+    #A_tot[:,496:512]=0
+
 
     # Index sets
     un_set = np.concatenate([bdy_1, bdy_2])
@@ -520,7 +602,7 @@ def teleport(probe_site,n_tube,r):
     mi_final = mutual_information(Gamma_right,[probe_idx],list(range(1,bdy_len+1)))
     mi_left = mutual_information(Gamma_TFD,[probe_idx],list(range(1,bdy_len+1)))
     mi_right = mutual_information(Gamma_TFD,[probe_idx],list(range(bdy_len+1,2*bdy_len+1)))
-    return mi_final, mi_left, mi_right
+    return mi_final, mi_left, mi_right, Gamma_TFD
 
 tube_lengths = np.arange(0,11)
 nl = 6
@@ -557,7 +639,7 @@ for i in range(nl):
             mi_left_level_vals = []
             mi_right_level_vals = []
             for site in sites:     
-                mi_fin, mi_left, mi_right = teleport(site,j,rvals[r])
+                mi_fin, mi_left, mi_right, _ = teleport(site,j,rvals[r])
                 mi_fin_level_vals.append(mi_fin)
                 mi_left_level_vals.append(mi_left)
                 mi_right_level_vals.append(mi_right)
@@ -566,10 +648,12 @@ for i in range(nl):
             mi_right_vals.append(sum(mi_right_level_vals)/len(sites))
         final[i].append(sum(mi_fin_vals)/len(rvals))
         d_left_right[i].append(sum(mi_left_vals)/len(rvals)-sum(mi_right_vals)/len(rvals))
-        
+
+
+colors = ["royalblue","teal","lightseagreen","mediumseagreen","limegreen","greenyellow","gold"]               
 
 for i in range(nl):
-    plt.plot(tube_lengths,final[i],label=f"layer {i}")
+    plt.plot(tube_lengths,final[i],color = colors[i],abel=f"layer {i}")
 plt.xlabel("tube length")
 plt.ylabel("final mutual information")
 plt.legend()
@@ -578,7 +662,7 @@ plt.close()
 #plt.show()
 
 for i in range(nl):
-    plt.plot(tube_lengths,d_left_right[i],label=f"layer {i}")
+    plt.plot(tube_lengths,d_left_right[i],color = colors[i],label=f"layer {i}")
 plt.xlabel("tube length")
 plt.ylabel("mutual information left - right")
 plt.legend()
@@ -586,17 +670,24 @@ plt.savefig("plots/tube_vs_mut_left_right.pdf")
 plt.close()
 #plt.show()
 
-"""
+
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n_tube,1)
+
+bdy_len = (Gamma_TFD.shape[0]-2)//4
+
 print("n_tube=",n_tube)
 print("probe_site=",probe_site)
-print(mutual_information(Gamma_TFD,[probe_idx],list(range(1,bdy_len+1))))
-print(mutual_information(Gamma_TFD,[probe_idx],list(range(bdy_len+1,2*bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1))))
 
 left_side = []
 right_side = []
+
 for i in range(bdy_len):
-    left_side.append(mutual_information(Gamma_TFD,[probe_idx],[i+1]))
-    right_side.append(mutual_information(Gamma_TFD,[probe_idx],[i+bdy_len+1]))
+    left_side.append(mutual_information(Gamma_TFD,[0],[i+1]))
+    right_side.append(mutual_information(Gamma_TFD,[0],[i+bdy_len+1]))
 
 sites=np.arange(bdy_len)
 plt.plot(sites,left_side,label="left")
@@ -605,16 +696,54 @@ plt.legend()
 plt.show()
 
 
+Gamma_right = measure_left_side(Gamma_TFD,bdy_len)
 
-
-print(mutual_information(Gamma_right,[probe_idx],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_right,[0],list(range(1,bdy_len+1))))
 right_after_meas = []
 for i in range(bdy_len):
-    right_after_meas.append(mutual_information(Gamma_right,[probe_idx],[i+1]))
+    right_after_meas.append(mutual_information(Gamma_right,[0],[i+1]))
 
 plt.plot(sites,right_after_meas,label="right after measurement")
 plt.legend()
 plt.show()
+
 """
+n = (Gamma_right.shape[0])//2
+meas_set = list(range(1,57))+list(range(72,128))
+un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
+Gamma_local = measure_sites(Gamma_right,meas_set)
+
+
+local_after_meas = []
+for i in range(len(un_set)):
+    local_after_meas.append(mutual_information(Gamma_local,[0],[i+1]))
+
+plt.plot(range(len(un_set)),local_after_meas)
+plt.legend()
+plt.show()
+"""
+
+tube_lengths = np.arange(0,20)
+left_right_mi = []
+mi_fin_list = []
+for n in range(len(tube_lengths)):
+    mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n,1)
+    bdy_len = (Gamma_TFD.shape[0]-2)//4
+    #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
+    left_right_mi.append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
+    mi_fin_list.append(mi_fin)
+
+
+plt.plot(tube_lengths,left_right_mi)
+plt.xlabel("tube_length")
+plt.ylabel("mutual information")
+plt.title("mutual information between both sides")
+plt.show()
+
+plt.plot(tube_lengths,mi_fin_list)
+plt.xlabel("tube_length")
+plt.ylabel("mutual information")
+plt.title("Final mutual info")
+plt.show()
 
 print("done")

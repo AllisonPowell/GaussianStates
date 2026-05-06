@@ -1129,7 +1129,7 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
         #if t%20 == 0:
             #state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False,kick=True)
         #else:
-        state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False,kick=False)
+        state = step_verlet_LR(state, -dt, params, evolve_left=True, evolve_right=False,kick=True)
     
 
     #Gamma_2mode = two_mode_squeezed_state(r=1)
@@ -1148,10 +1148,10 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
 
     for t in range(steps):
         #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=True, evolve_right=False)
-        #if t%20==0:
-            #state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=True)
-        #else:
-        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=False)
+        if t%20==0:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=True)
+        else:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=True, evolve_right=False,kick=False)
 
         #H_coupling_obs = pad_matrix_for_observer(H_coupling)
 
@@ -1161,10 +1161,10 @@ def teleportation_protocol(s,theta,insert_idx,t0,t_couple,dt,state_TFD,H_couplin
         #state_no_observer = step_coupling_window_twa_no_obs(state_no_observer, dt, params, H_coupling)     
     for t in range(steps):   
         #state_with_observer = step_verlet_LR_obs_safe(state_with_observer, dt, params, evolve_left=False, evolve_right=True)
-        #if t%20==0:
-            #state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=True)
-        #else:
-        state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=False)
+        if t%20==0:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=True)
+        else:
+            state_no_observer = step_verlet_LR(state_no_observer, dt, params, evolve_left=False, evolve_right=True, kick=False)
            
     return state_no_observer#,state_with_observer
     
@@ -1794,10 +1794,10 @@ def fidelity_vs_site(
 
 
 
-N = 10           # Number of sites in the ring
-M = 2000        # Number of trajectories (samples)
-params = {'m_squared': 13, 'k_coupling': 5, "momentum":1,'lam': 0.4, 'N_site': N}        # Total simulation time
-t0 = 4
+N = 4          # Number of sites in the ring
+M = 7000       # Number of trajectories (samples)
+params = {'m_squared': 13, 'k_coupling': 5, "momentum":1,'lam': 0.51282051, 'N_site': N}        # Total simulation time
+t0 = 1.4
 t_couple = 3
 dt = .005        # Time step
 steps = int(t0 / dt)
@@ -1820,7 +1820,7 @@ wigner_fidelities = []
 block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 
-N = 10
+
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
@@ -1853,12 +1853,13 @@ plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.legend()
 plt.show()
+
+print("done")
 """
-#print("done")
 
 
+lambda_vals = np.linspace(0,2,40)
 
-lambda_vals = np.linspace(0,6,30)
 lam_fid_symp = []
 lam_fid_flip = []
 for lam in lambda_vals:
@@ -1878,7 +1879,7 @@ for lam in lambda_vals:
     lam_fid_flip.append(Ff[insert_idx])
 
 #plt.plot(lambda_vals,lam_fid_symp)
-plt.plot(lambda_vals,lam_fid_flip)
+plt.plot(lambda_vals,lam_fid_flip,'.')
 plt.xlabel("added non-gaussianity")
 plt.ylabel("fidelity")
 plt.savefig("plots/fidelity_vs_lam.pdf")
@@ -1922,7 +1923,7 @@ plt.show()
 
 
 """
-times_evolve= np.linspace(2.4,2.8,9)
+times_evolve= np.linspace(1,1.8,9)
 time_fidelities_symp = []
 time_fidelities_flip = []
 for t in range(len(times_evolve)):
