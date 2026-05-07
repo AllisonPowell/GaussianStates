@@ -456,7 +456,7 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
 
 def teleport(probe_site,n_tube,r):
     # Parameters
-    L = 8
+    L = 7
     #L = 7
     Lh = 5
     g_tube = 1
@@ -605,8 +605,8 @@ def teleport(probe_site,n_tube,r):
     mi_right = mutual_information(Gamma_TFD,[probe_idx],list(range(bdy_len+1,2*bdy_len+1)))
     return mi_final, mi_left, mi_right, Gamma_TFD
 
-tube_lengths = np.arange(0,5)
-nl = 3
+tube_lengths = np.arange(0,2)
+nl = 2
 final = [[] for _ in range(nl)]
 d_left_right = [[] for _ in range(nl)]
 rvals = np.linspace(.1,1,5)
