@@ -456,7 +456,7 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
 def teleport(probe_site,n_tube,r):
     # Parameters
     L = 11
-    #L = 8
+    #L = 7
     Lh = 5
     g_tube = 1
     mu_s = 1
@@ -650,6 +650,19 @@ for i in range(nl):
         d_left_right[i].append(sum(mi_left_vals)/len(rvals)-sum(mi_right_vals)/len(rvals))
 
 
+with open('final.txt', 'w') as f:
+    for row in zip(final):
+        # Convert each element to string and join with tabs
+        row_str = "\t".join(map(str, row))
+        f.write(row_str + "\n")
+
+with open('d_left_right.txt', 'w') as f:
+    for row in zip(d_left_right):
+        # Convert each element to string and join with tabs
+        row_str = "\t".join(map(str, row))
+        f.write(row_str + "\n")
+
+"""
 colors = ["royalblue","teal","lightseagreen","mediumseagreen","limegreen","greenyellow","gold"]               
 
 for i in range(nl):
@@ -669,6 +682,11 @@ plt.legend()
 plt.savefig("plots/tube_vs_mut_left_right.pdf")
 plt.close()
 #plt.show()
+"""
+"""
+with open('mi_fin_list.txt', 'w') as f:
+    for item in mi_fin_list:
+        f.write(f"{item}\n")
 
 
 probe_site = 40
@@ -706,7 +724,7 @@ for i in range(bdy_len):
 plt.plot(sites,right_after_meas,label="right after measurement")
 plt.legend()
 plt.show()
-
+"""
 """
 n = (Gamma_right.shape[0])//2
 meas_set = list(range(1,57))+list(range(72,128))
@@ -721,7 +739,7 @@ for i in range(len(un_set)):
 plt.plot(range(len(un_set)),local_after_meas)
 plt.legend()
 plt.show()
-"""
+
 
 tube_lengths = np.arange(0,20)
 left_right_mi = []
@@ -746,4 +764,9 @@ plt.ylabel("mutual information")
 plt.title("Final mutual info")
 plt.show()
 
+with open('mi_fin_list.txt', 'w') as f:
+    for item in mi_fin_list:
+        f.write(f"{item}\n")
+
 print("done")
+"""
