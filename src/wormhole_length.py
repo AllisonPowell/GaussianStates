@@ -622,10 +622,10 @@ def H_coupling(N):
     n_total = 2*bdy_len
     H_coupling = np.zeros((2*n_total, 2*n_total))
     mu = 1
-    k = 5
-    m_squared = 13
-    omega0 = np.sqrt(m_squared + 2*k)
-    #omega0=1
+    #k = 5
+    #m_squared = 13
+    #omega0 = np.sqrt(m_squared + 2*k)
+    omega0=1
 
     for j in carrier_indices:
         x_L = bdy_1_idx[j]
@@ -634,9 +634,9 @@ def H_coupling(N):
         H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu*omega0 / 2
         # p coupling
         H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu / (2*omega0)
-    """
-    L = 4
-    Lh = 3
+
+    L = 7
+    Lh = 5
     n_tube = 0
     g_tube = 1
     mu_A = 1
@@ -727,13 +727,14 @@ def H_coupling(N):
     Gamma_TFD = momentum_measured_1(Gamma_q,un_set,meas_set)
 
 
-    b = bdy_len
-    keep = np.arange(b)  # keep left boundary
+    N = bdy_len
+    keep = np.arange(N)  # keep left boundary
     Gamma_reduced = trace_out_subsystem(Gamma_TFD, keep)
 
     #HL = covmat_to_hamil(Gamma_reduced)
     HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
 
+    """
     HL = np.zeros((2*N,2*N))
     for i in range(2*N):
         if i < N-1:
@@ -746,6 +747,7 @@ def H_coupling(N):
             HL[i,i] = m_squared + 2 * k 
         if i > N-1:
             HL[i,i] = 1
+    """
 
     #N = Gamma_TFD.shape[0]//4
     HL_full = np.zeros((4*N, 4*N))
@@ -761,10 +763,10 @@ def H_coupling(N):
     HR_full[np.ix_(range(3*N, 4*N), range(N, 2*N))] = HL[N:, :N]
     HR_full[np.ix_(range(3*N, 4*N), range(3*N, 4*N))] = HL[N:, N:]
 
-    #H_LR = HL_full+HR_full
+    H_LR = HL_full+HR_full
 
-    #H_coupling_OG += H_LR
-    """
+    H_coupling += H_LR
+
     return H_coupling
 
 
@@ -840,8 +842,8 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
 
     else:
         # Parameters
-        L = 4
-        Lh = 3
+        L = 7
+        Lh = 5
         g_tube = 1
         mu_A = 1
         mu_B = 1
@@ -937,7 +939,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0=4
+        t0=5
 
 
     ############
@@ -1011,7 +1013,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
     # couple the two sides
     #######
     if coupling==True:
-        t_couple = 3       
+        t_couple = 3.2       
         S_coupling = expm(Omega @ H_coupling * t_couple)
         Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 
@@ -1056,9 +1058,19 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
     return Gamma_final_observer, Gamma_final, Gamma_forward_observer, Gamma_forward
 
 
+N = 64
+H_coupling = H_coupling(N)
+
 tube_lengths = np.arange(60)
+fin_mut_info = [] 
+for n in range(len(tube_lengths)):
+    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=1,theta=0,insert_idx=2,wormhole=True,n_one_side=64,n_tube=n,H_coupling=H_coupling,coupling=True)
+    fin_mut_info.append(mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N))))
+    print(fin_mut_info[-1])
 
-
+plt.plot(tube_lengths,fin_mut_info)
+plt.xlabel("tube length")
+plt.show()
 
 
 print("stop")

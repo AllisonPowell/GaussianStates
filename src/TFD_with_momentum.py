@@ -632,8 +632,8 @@ def fidelity(V1,V2):
 
 
 # Parameters
-L = 4
-Lh = 3
+L = 7
+Lh = 5
 n_tube = 0
 g_tube = 1
 mu_A = 1

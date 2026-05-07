@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import inv, expm, sqrtm, schur, block_diag, eigh, det, polar
 from thewalrus.symplectic import xpxp_to_xxpp, sympmat
 import random
+import os
 
 def symplectic_form(n):
     """Returns the 2n × 2n symplectic form Omega"""
@@ -455,7 +456,7 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
 
 def teleport(probe_site,n_tube,r):
     # Parameters
-    L = 11
+    L = 8
     #L = 7
     Lh = 5
     g_tube = 1
@@ -604,8 +605,8 @@ def teleport(probe_site,n_tube,r):
     mi_right = mutual_information(Gamma_TFD,[probe_idx],list(range(bdy_len+1,2*bdy_len+1)))
     return mi_final, mi_left, mi_right, Gamma_TFD
 
-tube_lengths = np.arange(0,11)
-nl = 6
+tube_lengths = np.arange(0,5)
+nl = 3
 final = [[] for _ in range(nl)]
 d_left_right = [[] for _ in range(nl)]
 rvals = np.linspace(.1,1,5)
