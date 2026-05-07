@@ -650,13 +650,19 @@ for i in range(nl):
         d_left_right[i].append(sum(mi_left_vals)/len(rvals)-sum(mi_right_vals)/len(rvals))
 
 
-with open('outputs/final.txt', 'w') as f:
+if not os.path.exists("outputs"):
+    os.makedirs("outputs")
+
+final_path = os.path.join("outputs", "final.txt")
+d_left_right_path = os.path.join("outputs", "d_left_right.txt")
+
+with open(final_path, 'w') as f:
     for row in zip(final):
         # Convert each element to string and join with tabs
         row_str = "\t".join(map(str, row))
         f.write(row_str + "\n")
 
-with open('outputs/d_left_right.txt', 'w') as f:
+with open(d_left_right_path, 'w') as f:
     for row in zip(d_left_right):
         # Convert each element to string and join with tabs
         row_str = "\t".join(map(str, row))
