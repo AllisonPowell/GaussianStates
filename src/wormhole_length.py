@@ -604,12 +604,15 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
 
 
 
-def H_coupling(N):
+def build_H_coupling(N,Gamma_TFD):
     bdy_len = N
     bdy_1_idx = np.arange(bdy_len)
     bdy_2_idx = np.arange(bdy_len,2*bdy_len)
 
     #carrier_indices = np.arange(0, bdy_len)  # skip teleportation qubit
+
+
+
 
     insert_idx = 1
     carrier_indices1 = np.arange(0,insert_idx)
@@ -628,12 +631,20 @@ def H_coupling(N):
     omega0=1
 
     for j in carrier_indices:
+        var_x = Gamma_TFD[j, j]
+        var_p = Gamma_TFD[j+n_total, j+n_total]
+
+        gxx = 1/(2*var_x)
+        gpp = 1/(2*var_p)
+        gxx=1
+        gpp=1
+
         x_L = bdy_1_idx[j]
         x_R = bdy_2_idx[j]
         # x coupling
-        H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu*omega0 / 2
+        H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu * gxx
         # p coupling
-        H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+        H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu * gpp
 
     L = 7
     Lh = 5
@@ -765,7 +776,7 @@ def H_coupling(N):
 
     H_LR = HL_full+HR_full
 
-    H_coupling += H_LR
+    #H_coupling += H_LR
 
     return H_coupling
 
@@ -809,7 +820,7 @@ def measure_left_side(Gamma,bdy_len):
 
 
 
-def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupling,coupling):
+def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,coupling):
     q = insert_idx
     if wormhole == False:
         N = 2*n_one_side
@@ -1012,6 +1023,8 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
     #######
     # couple the two sides
     #######
+    H_coupling = build_H_coupling(b,Gamma_TFD)
+
     if coupling==True:
         t_couple = 3.2       
         S_coupling = expm(Omega @ H_coupling * t_couple)
@@ -1059,12 +1072,12 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,H_coupl
 
 
 N = 64
-H_coupling = H_coupling(N)
+
 
 tube_lengths = np.arange(60)
 fin_mut_info = [] 
 for n in range(len(tube_lengths)):
-    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=1,theta=0,insert_idx=2,wormhole=True,n_one_side=64,n_tube=n,H_coupling=H_coupling,coupling=True)
+    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=1,theta=0,insert_idx=2,wormhole=True,n_one_side=64,n_tube=n,coupling=True)
     fin_mut_info.append(mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N))))
     print(fin_mut_info[-1])
 

@@ -630,11 +630,123 @@ def fidelity(V1,V2):
     return F0
 
 
+def extract_phase_space_submatrix(Gamma, modes):
+    """
+    Extract covariance matrix for a subset of modes.
+
+    Ordering preserved as:
+    [x_modes..., p_modes...]
+
+    Parameters
+    ----------
+    Gamma : (2N,2N)
+    modes : list/array of mode indices
+
+    Returns
+    -------
+    Gamma_sub : (2m,2m)
+    """
+    N = Gamma.shape[0] // 2
+    modes = np.array(modes)
+
+    idx = np.concatenate([modes, modes + N])
+
+    return Gamma[np.ix_(idx, idx)]
+
+from scipy.linalg import sqrtm
+
+def inverse_sqrtm_psd(M, eps=1e-10):
+    """
+    Stable inverse square root of positive matrix.
+    """
+    evals, evecs = np.linalg.eigh(M)
+
+    evals = np.clip(evals, eps, None)
+
+    inv_sqrt = np.diag(1.0 / np.sqrt(evals))
+
+    return evecs @ inv_sqrt @ evecs.T
+
+def build_covariance_whitened_coupling(
+    Gamma_forward,
+    carrier_indices,
+    eta=1.0
+):
+    """
+    Build covariance-whitened traversable interaction.
+
+    Parameters
+    ----------
+    Gamma_forward : covariance matrix immediately before coupling
+                    shape (4N,4N)
+
+    carrier_indices : coupled boundary sites on ONE side
+
+    eta : coupling strength
+
+    Returns
+    -------
+    H_int : quadratic Hamiltonian matrix
+    """
+
+    n_total = Gamma_forward.shape[0] // 2
+    N_side = n_total // 2
+
+    # left/right boundary indices
+    left_modes = np.array(carrier_indices)
+    right_modes = left_modes + N_side
+
+    #
+    # Extract left covariance on coupled modes
+    #
+    Gamma_L = extract_phase_space_submatrix(
+        Gamma_forward,
+        left_modes
+    )
+
+    #
+    # Whitening metric
+    #
+    G = np.linalg.inv(Gamma_L)
+
+    #
+    # Build full Hamiltonian
+    #
+    H_int = np.zeros((2*n_total, 2*n_total))
+
+    m = len(left_modes)
+
+    #
+    # Phase-space indices
+    #
+    idxL = np.concatenate([
+        left_modes,
+        left_modes + n_total
+    ])
+
+    idxR = np.concatenate([
+        right_modes,
+        right_modes + n_total
+    ])
+
+    #
+    # Insert cross-coupling blocks
+    #
+    H_int[np.ix_(idxL, idxR)] = 0.5 * eta * G
+    H_int[np.ix_(idxR, idxL)] = 0.5 * eta * G.T
+
+    #
+    # Symmetrize
+    #
+    H_int = 0.5 * (H_int + H_int.T)
+
+    return H_int
+
 
 # Parameters
 L = 7
 Lh = 5
-n_tube = 0
+n_tube = 8
 g_tube = 1
 mu_A = 1
 mu_B = 1
@@ -880,8 +992,7 @@ coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
 
 
 
-t0 = 5
-
+t0 = 4
 
 
 Gamma_left = left_side(Gamma_TFD)
@@ -1145,13 +1256,13 @@ plt.show()
 # couple the two sides
 #######
 
-n_total = Gamma_TFD.shape[0] // 2
+#n_total = Gamma_TFD.shape[0] // 2
 
 #N = n_total
 # Global oscillator indices of left and right boundaries
-bdy_len = 2**(L - 1)         # e.g. 128
-bdy_1 = np.arange(N - bdy_len, N)               # left boundary: physical indices
-bdy_2 = np.arange(N_tot - bdy_len, N_tot)       # right boundary: physical indices
+#bdy_len = 2**(L - 1)         # e.g. 128
+#bdy_1 = np.arange(N - bdy_len, N)               # left boundary: physical indices
+#bdy_2 = np.arange(N_tot - bdy_len, N_tot)       # right boundary: physical indices
 
 # Map these physical indices into the post-measurement (Gamma_TFD) indexing
 # You need to find where each bdy_1 and bdy_2 element lies in un_set
@@ -1168,13 +1279,38 @@ carrier_indices1 = np.arange(0,insert_idx)
 carrier_indices2 = np.arange(insert_idx+1,bdy_len)
 carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
 
+
+H_int = build_covariance_whitened_coupling(
+    Gamma_forward,
+    carrier_indices,
+    eta=0.05
+)
+
+#
+# Optional: include concurrent evolution
+#
+#H_total = H_int + H_LR
+
+S_coupling = expm(Omega @ H_total * t_couple)
+
+
+
+
+
+
+
+
+
+
+
+"""
 def idx_x(j): return j
 def idx_p(j): return j + n_total
 
 
 H = np.zeros((2*n_total, 2*n_total))
 mu = 1
-"""
+
 j = insert_idx
 
 x_L = bdy_1_idx[j]
@@ -1185,7 +1321,7 @@ H[x_L, x_R] = H[x_R, x_L] = mu / 2
 H[x_L + n_total, x_R + n_total] = H[x_R + n_total, x_L + n_total] = mu / 2
 """
 
-
+"""
 for j in carrier_indices:
     x_L = bdy_1_idx[j]
     x_R = bdy_2_idx[j]
@@ -1193,7 +1329,7 @@ for j in carrier_indices:
     H[x_L, x_R] = H[x_R, x_L] = mu / 2
     # p coupling
     H[x_L + n_total, x_R + n_total] = H[x_R + n_total, x_L + n_total] = mu / 2
-
+"""
 
 
 
@@ -1204,7 +1340,9 @@ H_padded = pad_matrix_for_observer(H)
 
 
 
-t_couple = 3.2
+
+
+t_couple = 3.1
 dt_couple = t_couple/T
 S_coupling = expm(Omega_padded @ H_padded * t_couple)
 
