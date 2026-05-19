@@ -456,8 +456,9 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
 
 def teleport(probe_site,n_tube,r):
     # Parameters
-    L = 11
-    #L = 7
+    #L = 11
+    L = 7
+    #L = 9
     Lh = 5
     g_tube = 1
     mu_s = 1
@@ -519,9 +520,15 @@ def teleport(probe_site,n_tube,r):
     #A_tot[90:102,:]=0
     #A_tot[:,90:102]=0
 
+    #A_tot[91:103,:]=0
+    #A_tot[:,91:103]=0
+
 
     #A_tot[86:106,:]=0
     #A_tot[:,86:106]=0
+
+    #A_tot[87:107,:]=0
+    #A_tot[:,87:107]=0
 
     #A_tot[54:74,:]=0
     #A_tot[:,54:74]=0   
@@ -605,6 +612,7 @@ def teleport(probe_site,n_tube,r):
     mi_right = mutual_information(Gamma_TFD,[probe_idx],list(range(bdy_len+1,2*bdy_len+1)))
     return mi_final, mi_left, mi_right, Gamma_TFD
 
+"""
 tube_lengths = np.arange(0,11)
 nl = 6
 final = [[] for _ in range(nl)]
@@ -669,7 +677,6 @@ with open(d_left_right_path, 'w') as f:
         row_str = "\t".join(map(str, row))
         f.write(row_str + "\n")
 
-"""
 colors = ["royalblue","teal","lightseagreen","mediumseagreen","limegreen","greenyellow","gold"]               
 
 for i in range(nl):
@@ -689,14 +696,14 @@ plt.legend()
 plt.savefig("plots/tube_vs_mut_left_right.pdf")
 plt.close()
 #plt.show()
-"""
-"""
+
+
 with open('mi_fin_list.txt', 'w') as f:
     for item in mi_fin_list:
         f.write(f"{item}\n")
-
-
-probe_site = 40
+"""
+"""
+probe_site = 12
 n_tube = 1
 mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n_tube,1)
 
@@ -731,8 +738,8 @@ for i in range(bdy_len):
 plt.plot(sites,right_after_meas,label="right after measurement")
 plt.legend()
 plt.show()
-"""
-"""
+
+
 n = (Gamma_right.shape[0])//2
 meas_set = list(range(1,57))+list(range(72,128))
 un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
@@ -746,9 +753,10 @@ for i in range(len(un_set)):
 plt.plot(range(len(un_set)),local_after_meas)
 plt.legend()
 plt.show()
+"""
 
-
-tube_lengths = np.arange(0,20)
+probe_site = 32
+tube_lengths = np.linspace(0,400,120)
 left_right_mi = []
 mi_fin_list = []
 for n in range(len(tube_lengths)):
@@ -771,8 +779,13 @@ plt.ylabel("mutual information")
 plt.title("Final mutual info")
 plt.show()
 
-with open('mi_fin_list.txt', 'w') as f:
-    for item in mi_fin_list:
-        f.write(f"{item}\n")
-"""
+
+fin_path = os.path.join("outputs", "fin.txt")
+
+with open(fin_path, 'w') as f:
+    for row in zip(mi_fin_list):
+        # Convert each element to string and join with tabs
+        row_str = "\t".join(map(str, row))
+        f.write(row_str + "\n")
+
 print("done")

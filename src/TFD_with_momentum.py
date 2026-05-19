@@ -707,7 +707,9 @@ def build_covariance_whitened_coupling(
     #
     # Whitening metric
     #
-    G = np.linalg.inv(Gamma_L)
+    #G = np.linalg.inv(Gamma_L)
+    G = inverse_sqrtm_psd(Gamma_L)
+    G = G @ G
 
     #
     # Build full Hamiltonian
@@ -742,11 +744,143 @@ def build_covariance_whitened_coupling(
 
     return H_int
 
+from scipy.linalg import eigh
+
+def modular_filter_matrix(
+    K,
+    cutoff=1.0,
+    filter_type="lorentz"
+):
+    """
+    Construct spectral filter F(K).
+
+    Parameters
+    ----------
+    K : modular Hamiltonian matrix
+
+    cutoff : modular energy scale Lambda
+
+    filter_type :
+        "exp"      -> exp(-eps/Lambda)
+        "lorentz"  -> 1/(1+(eps/Lambda)^2)
+        "sharp"    -> theta(Lambda-eps)
+
+    Returns
+    -------
+    F : filtered matrix
+    """
+
+    #
+    # Symmetrize
+    #
+    K = 0.5 * (K + K.T)
+
+    #
+    # Diagonalize
+    #
+    eps, U = eigh(K)
+
+    #
+    # Positive energies only
+    #
+    eps = np.abs(eps)
+
+    #
+    # Spectral filter
+    #
+    if filter_type == "exp":
+        f = np.exp(-eps / cutoff)
+
+    elif filter_type == "lorentz":
+        f = 1.0 / (1.0 + (eps / cutoff)**2)
+
+    elif filter_type == "sharp":
+        f = (eps < cutoff).astype(float)
+
+    else:
+        raise ValueError("Unknown filter type")
+
+    #
+    # Reconstruct operator
+    #
+    F = U @ np.diag(f) @ U.T
+
+    return 0.5 * (F + F.T)
+
+def build_filtered_traversable_coupling(
+    HL,
+    bdy_len,
+    carrier_indices,
+    eta=1.0,
+    cutoff=1.0,
+    filter_type="exp"
+):
+    """
+    Modular-energy filtered traversable interaction.
+    """
+
+    n_total = 2 * bdy_len
+
+    #
+    # Build modular filter
+    #
+    F = modular_filter_matrix(
+        HL,
+        cutoff=cutoff,
+        filter_type=filter_type
+    )
+
+    #
+    # Full Hamiltonian
+    #
+    H_int = np.zeros((2*n_total, 2*n_total))
+
+    #
+    # Left/right mode lists
+    #
+    left_modes = np.array(carrier_indices)
+    right_modes = left_modes + bdy_len
+
+    #
+    # Build phase-space index lists
+    #
+    idxL = np.concatenate([
+        left_modes,
+        left_modes + n_total
+    ])
+
+    idxR = np.concatenate([
+        right_modes,
+        right_modes + n_total
+    ])
+
+    #
+    # Restrict filter to coupled modes
+    #
+    keep = np.concatenate([
+        carrier_indices,
+        np.array(carrier_indices) + bdy_len
+    ])
+
+    F_sub = F[np.ix_(keep, keep)]
+
+    #
+    # Insert LR coupling
+    #
+    H_int[np.ix_(idxL, idxR)] = eta * F_sub
+    H_int[np.ix_(idxR, idxL)] = eta * F_sub.T
+
+    #
+    # Symmetrize
+    #
+    H_int = 0.5 * (H_int + H_int.T)
+
+    return H_int
 
 # Parameters
 L = 7
 Lh = 5
-n_tube = 8
+n_tube = 6
 g_tube = 1
 mu_A = 1
 mu_B = 1
@@ -989,11 +1123,7 @@ coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
 #plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
 
 
-
-
-
-t0 = 4
-
+t0 = 3.8
 
 Gamma_left = left_side(Gamma_TFD)
 
@@ -1135,7 +1265,7 @@ Omega = symplectic_form(n)
 S_back = expm(-1 * Omega @ HL_full * t0)
 Gamma_back = S_back @ Gamma_TFD @ S_back.T
 
-T = 80
+T = 90
 dt = t0/T
 
 
@@ -1279,19 +1409,30 @@ carrier_indices1 = np.arange(0,insert_idx)
 carrier_indices2 = np.arange(insert_idx+1,bdy_len)
 carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
 
-
+"""
 H_int = build_covariance_whitened_coupling(
-    Gamma_forward,
+    Gamma_LR_no_insert,
     carrier_indices,
-    eta=0.05
+    eta=1
 )
+"""
 
 #
 # Optional: include concurrent evolution
 #
 #H_total = H_int + H_LR
 
-S_coupling = expm(Omega @ H_total * t_couple)
+
+
+H_int = build_filtered_traversable_coupling(
+    HL,
+    bdy_len,
+    carrier_indices,
+    eta=2.0,
+    cutoff=1,
+    filter_type="lorentz"
+)
+
 
 
 
@@ -1334,15 +1475,13 @@ for j in carrier_indices:
 
 
 
-H_padded = pad_matrix_for_observer(H)
+H_padded = pad_matrix_for_observer(H_int)
 #H_padded+=H_LR_padded  
 
 
 
-
-
-
-t_couple = 3.1
+t_couple = 400
+#t_couple=33
 dt_couple = t_couple/T
 S_coupling = expm(Omega_padded @ H_padded * t_couple)
 
@@ -1350,7 +1489,7 @@ Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 
 
 
-S_couple_no_insert = expm(Omega @ H * dt_couple)
+S_couple_no_insert = expm(Omega @ H_int * dt_couple)
 S_couple_dt = expm(1 * Omega_padded @ H_padded * dt_couple)
 
 times_obs_coupling = np.linspace(t0,t0+t_couple,T)
