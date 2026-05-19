@@ -4,6 +4,11 @@ from scipy.linalg import inv, expm, sqrtm, schur, block_diag, eigh, det, polar
 from thewalrus.symplectic import xpxp_to_xxpp, sympmat
 import random
 import os
+from pathlib import Path
+import csv
+
+PROJ_DIR = Path(__file__).parent.parent
+
 
 def symplectic_form(n):
     """Returns the 2n × 2n symplectic form Omega"""
@@ -454,10 +459,10 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
     Gamma_probe[probe_site,nb]=1
     return Gamma_probe
 
-def teleport(probe_site,n_tube,r):
+def teleport(probe_site,n_tube,r,L):
     # Parameters
     #L = 11
-    L = 7
+    #L = 7
     #L = 9
     Lh = 5
     g_tube = 1
@@ -648,7 +653,7 @@ for i in range(nl):
             mi_left_level_vals = []
             mi_right_level_vals = []
             for site in sites:     
-                mi_fin, mi_left, mi_right, _ = teleport(site,j,rvals[r])
+                mi_fin, mi_left, mi_right, _ = teleport(site,j,rvals[r],11)
                 mi_fin_level_vals.append(mi_fin)
                 mi_left_level_vals.append(mi_left)
                 mi_right_level_vals.append(mi_right)
@@ -705,7 +710,7 @@ with open('mi_fin_list.txt', 'w') as f:
 """
 probe_site = 12
 n_tube = 1
-mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n_tube,1)
+mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n_tube,1,8)
 
 bdy_len = (Gamma_TFD.shape[0]-2)//4
 
@@ -754,13 +759,13 @@ plt.plot(range(len(un_set)),local_after_meas)
 plt.legend()
 plt.show()
 """
-
-probe_site = 32
+"""
+probe_site = 8
 tube_lengths = np.linspace(0,400,120)
 left_right_mi = []
 mi_fin_list = []
 for n in range(len(tube_lengths)):
-    mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n,1)
+    mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n,1,7)
     bdy_len = (Gamma_TFD.shape[0]-2)//4
     #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
     left_right_mi.append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
@@ -787,5 +792,40 @@ with open(fin_path, 'w') as f:
         # Convert each element to string and join with tabs
         row_str = "\t".join(map(str, row))
         f.write(row_str + "\n")
+"""
+
+bdy_sizes = [7,8,9,10]
+
+
+probe_site = 32
+tube_lengths = np.linspace(0,400,120)
+#tube_lengths = np.linspace(0,20,11)
+
+left_right_mi = [[] for _ in range(len(bdy_sizes))]
+mi_fin_list = [[] for _ in range(len(bdy_sizes))]
+
+for bdy in range(len(bdy_sizes)):
+    for n in range(len(tube_lengths)):
+        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,bdy_sizes[bdy])
+        bdy_len = (Gamma_TFD.shape[0]-2)//4
+        #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
+        left_right_mi[bdy].append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
+        mi_fin_list[bdy].append(mi_fin)
+
+
+
+rows_left_right = zip(list(tube_lengths),*left_right_mi)
+
+with open(f'{PROJ_DIR}/data/left_right_mi.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_left_right)
+
+rows_fin = zip(list(tube_lengths),*mi_fin_list)
+
+with open(f'{PROJ_DIR}/data/mi_fin.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_fin)
+
+
 
 print("done")

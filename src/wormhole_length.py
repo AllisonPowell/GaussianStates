@@ -648,7 +648,7 @@ def build_H_coupling(N,Gamma_TFD):
 
     L = 7
     Lh = 5
-    n_tube = 0
+    n_tube = 10
     g_tube = 1
     mu_A = 1
     mu_B = 1
@@ -819,8 +819,141 @@ def measure_left_side(Gamma,bdy_len):
     return V_bdy
 
 
+from scipy.linalg import eigh
 
-def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,coupling):
+def modular_filter_matrix(
+    K,
+    cutoff=1.0,
+    filter_type="lorentz"
+):
+    """
+    Construct spectral filter F(K).
+
+    Parameters
+    ----------
+    K : modular Hamiltonian matrix
+
+    cutoff : modular energy scale Lambda
+
+    filter_type :
+        "exp"      -> exp(-eps/Lambda)
+        "lorentz"  -> 1/(1+(eps/Lambda)^2)
+        "sharp"    -> theta(Lambda-eps)
+
+    Returns
+    -------
+    F : filtered matrix
+    """
+
+    #
+    # Symmetrize
+    #
+    K = 0.5 * (K + K.T)
+
+    #
+    # Diagonalize
+    #
+    eps, U = eigh(K)
+
+    #
+    # Positive energies only
+    #
+    eps = np.abs(eps)
+
+    #
+    # Spectral filter
+    #
+    if filter_type == "exp":
+        f = np.exp(-eps / cutoff)
+
+    elif filter_type == "lorentz":
+        f = 1.0 / (1.0 + (eps / cutoff)**2)
+
+    elif filter_type == "sharp":
+        f = (eps < cutoff).astype(float)
+
+    else:
+        raise ValueError("Unknown filter type")
+
+    #
+    # Reconstruct operator
+    #
+    F = U @ np.diag(f) @ U.T
+
+    return 0.5 * (F + F.T)
+
+def build_filtered_traversable_coupling(
+    HL,
+    bdy_len,
+    carrier_indices,
+    eta=1.0,
+    cutoff=1.0,
+    filter_type="exp"
+):
+    """
+    Modular-energy filtered traversable interaction.
+    """
+
+    n_total = 2 * bdy_len
+
+    #
+    # Build modular filter
+    #
+    F = modular_filter_matrix(
+        HL,
+        cutoff=cutoff,
+        filter_type=filter_type
+    )
+
+    #
+    # Full Hamiltonian
+    #
+    H_int = np.zeros((2*n_total, 2*n_total))
+
+    #
+    # Left/right mode lists
+    #
+    left_modes = np.array(carrier_indices)
+    right_modes = left_modes + bdy_len
+
+    #
+    # Build phase-space index lists
+    #
+    idxL = np.concatenate([
+        left_modes,
+        left_modes + n_total
+    ])
+
+    idxR = np.concatenate([
+        right_modes,
+        right_modes + n_total
+    ])
+
+    #
+    # Restrict filter to coupled modes
+    #
+    keep = np.concatenate([
+        carrier_indices,
+        np.array(carrier_indices) + bdy_len
+    ])
+
+    F_sub = F[np.ix_(keep, keep)]
+
+    #
+    # Insert LR coupling
+    #
+    H_int[np.ix_(idxL, idxR)] = eta * F_sub
+    H_int[np.ix_(idxR, idxL)] = eta * F_sub.T
+
+    #
+    # Symmetrize
+    #
+    H_int = 0.5 * (H_int + H_int.T)
+
+    return H_int
+
+
+def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,coupling,t_couple):
     q = insert_idx
     if wormhole == False:
         N = 2*n_one_side
@@ -848,7 +981,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        t0 = 1.4
+        t0 = 6
 
 
     else:
@@ -950,7 +1083,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0=5
+        t0 = 6
 
 
     ############
@@ -1003,7 +1136,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
 
     Gamma_insert = insert_unentangled_mode(Gamma_back, insert_idx, Gamma_rot_squeezed)
 
-    Gamma_2mode = two_mode_squeezed_state(r=1)
+    Gamma_2mode = two_mode_squeezed_state(r=.2)
 
     Gamma_with_observer = insert_two_mode_state_direct_sum(Gamma_back, insert_idx, Gamma_2mode)
 
@@ -1023,14 +1156,24 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
     #######
     # couple the two sides
     #######
-    H_coupling = build_H_coupling(b,Gamma_TFD)
 
     if coupling==True:
-        t_couple = 3.2       
-        S_coupling = expm(Omega @ H_coupling * t_couple)
+        carrier_indices1 = np.arange(0,insert_idx)
+        carrier_indices2 = np.arange(insert_idx+1,bdy_len)
+        carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
+        H_int = build_filtered_traversable_coupling(
+            HL,
+            bdy_len,
+            carrier_indices,
+            eta=2.0,
+            cutoff=1,
+            filter_type="lorentz"
+        )
+        H_coupling_padded = pad_matrix_for_observer(H_int)
+     
+        S_coupling = expm(Omega @ H_int * t_couple)
         Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 
-        H_coupling_padded = pad_matrix_for_observer(H_coupling)
         S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
         Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
     else:
@@ -1074,10 +1217,10 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
 N = 64
 
 
-tube_lengths = np.arange(60)
+tube_lengths = np.linspace(10,60,11)
 fin_mut_info = [] 
 for n in range(len(tube_lengths)):
-    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=1,theta=0,insert_idx=2,wormhole=True,n_one_side=64,n_tube=n,coupling=True)
+    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=1,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=int(tube_lengths[n]),coupling=True,t_couple=73.8)
     fin_mut_info.append(mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N))))
     print(fin_mut_info[-1])
 
