@@ -59,7 +59,7 @@ plt.show()
 
 
 
-
+"""
 df_left_right = pd.read_csv(f'{PROJ_DIR}/data/left_right_mi.csv', header=None)
 df_mi_fin = pd.read_csv(f'{PROJ_DIR}/data/mi_fin.csv', header=None)
 
@@ -78,4 +78,73 @@ plt.xlabel("tube length")
 plt.ylabel("mutual information")
 plt.legend()
 plt.show()
+"""
 
+
+labels = [.5,1,2,3]
+
+df_left_right_spring = pd.read_csv(f'{PROJ_DIR}/data/left_right_mi_spring.csv', header=None)
+df_mi_fin_spring = pd.read_csv(f'{PROJ_DIR}/data/mi_fin_spring.csv', header=None)
+
+
+for l in range(df_left_right_spring.shape[1]-1):
+    plt.plot(df_left_right_spring[0],df_left_right_spring[l+1],color=colors[l],label=f"spring constant = {labels[l]}")
+plt.xlabel("tube length")
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+
+
+for l in range(df_mi_fin_spring.shape[1]-1):
+    plt.plot(df_mi_fin_spring[0],df_mi_fin_spring[l+1],color=colors[l],label=f"spring constant = {labels[l]}")
+plt.xlabel("tube length") 
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+
+
+"""
+labels = [8,10,12,15]
+
+df_left_right_time = pd.read_csv(f'{PROJ_DIR}/data/left_right_mi_time.csv', header=None)
+df_mi_fin_time = pd.read_csv(f'{PROJ_DIR}/data/mi_fin_time.csv', header=None)
+
+
+for l in range(df_left_right_time.shape[1]-1):
+    plt.plot(df_left_right_time[0],df_left_right_time[l+1],color=colors[l],label=f"quench time = {labels[l]}")
+plt.xlabel("tube length")
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+
+
+for l in range(df_mi_fin_time.shape[1]-1):
+    plt.plot(df_mi_fin_time[0],df_mi_fin_time[l+1],color=colors[l],label=f"quench time = {labels[l]}")
+plt.xlabel("tube length") 
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+"""
+
+"""
+labels = [4,8,16,32]
+
+df_left_right_width = pd.read_csv(f'{PROJ_DIR}/data/left_right_mi_width.csv', header=None)
+df_mi_fin_width = pd.read_csv(f'{PROJ_DIR}/data/mi_fin_width.csv', header=None)
+
+
+for l in range(df_left_right_width.shape[1]-1):
+    plt.plot(df_left_right_width[0],df_left_right_width[l+1],color=colors[l],label=f"tube circumference = {labels[l]}")
+plt.xlabel("tube length")
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+
+
+for l in range(df_mi_fin_width.shape[1]-1):
+    plt.plot(df_mi_fin_width[0],df_mi_fin_width[l+1],color=colors[l],label=f"tube circumference = {labels[l]}")
+plt.xlabel("tube length") 
+plt.ylabel("mutual information")
+plt.legend()
+plt.show()
+"""

@@ -601,18 +601,26 @@ def tfd_cov_ring_from_normal_modes(N, k, m2, V, beta, eps_omega=1e-15):
     nu_tfd = symplectic_eigenvalues(Gamma_site)   # should be ~0.5 for all 2N modes
     return Gamma_site
 
+#define coupling Hamiltonian
+
+# Global oscillator indices of left and right boundaries
+#bdy_len = 2**(L - 1)         # e.g. 128
+#bdy_1 = np.arange(N - bdy_len, N)               # left boundary: physical indices
+#bdy_2 = np.arange(N_tot - bdy_len, N_tot)       # right boundary: physical indices
+
+# Map these physical indices into the post-measurement (Gamma_TFD) indexing
+# You need to find where each bdy_1 and bdy_2 element lies in un_set
+#lookup = {node: i for i, node in enumerate(un_set)}
+#bdy_1_idx = np.array([lookup[x] for x in bdy_1])
+#bdy_2_idx = np.array([lookup[x] for x in bdy_2])
 
 
-
-def build_H_coupling(N,Gamma_TFD):
+def H_coupling(N):
     bdy_len = N
     bdy_1_idx = np.arange(bdy_len)
     bdy_2_idx = np.arange(bdy_len,2*bdy_len)
 
     #carrier_indices = np.arange(0, bdy_len)  # skip teleportation qubit
-
-
-
 
     insert_idx = 1
     carrier_indices1 = np.arange(0,insert_idx)
@@ -623,32 +631,24 @@ def build_H_coupling(N,Gamma_TFD):
     def idx_p(j): return j + n_total
 
     n_total = 2*bdy_len
-    H_coupling = np.zeros((2*n_total, 2*n_total))
+    H_coupling_OG = np.zeros((2*n_total, 2*n_total))
     mu = 1
-    #k = 5
-    #m_squared = 13
-    #omega0 = np.sqrt(m_squared + 2*k)
-    omega0=1
+    k = 5
+    m_squared = 13
+    omega0 = np.sqrt(m_squared + 2*k)
+    #omega0=1
 
     for j in carrier_indices:
-        var_x = Gamma_TFD[j, j]
-        var_p = Gamma_TFD[j+n_total, j+n_total]
-
-        gxx = 1/(2*var_x)
-        gpp = 1/(2*var_p)
-        gxx=1
-        gpp=1
-
         x_L = bdy_1_idx[j]
         x_R = bdy_2_idx[j]
         # x coupling
-        H_coupling[x_L, x_R] = H_coupling[x_R, x_L] = mu * gxx
+        H_coupling_OG[x_L, x_R] = H_coupling_OG[x_R, x_L] = mu*omega0 / 2
         # p coupling
-        H_coupling[x_L + n_total, x_R + n_total] = H_coupling[x_R + n_total, x_L + n_total] = mu * gpp
-
-    L = 7
-    Lh = 5
-    n_tube = 10
+        H_coupling_OG[x_L + n_total, x_R + n_total] = H_coupling_OG[x_R + n_total, x_L + n_total] = mu / (2*omega0)
+    """
+    L = 4
+    Lh = 3
+    n_tube = 0
     g_tube = 1
     mu_A = 1
     mu_B = 1
@@ -738,13 +738,12 @@ def build_H_coupling(N,Gamma_TFD):
     Gamma_TFD = momentum_measured_1(Gamma_q,un_set,meas_set)
 
 
-    N = bdy_len
-    keep = np.arange(N)  # keep left boundary
+    b = bdy_len
+    keep = np.arange(b)  # keep left boundary
     Gamma_reduced = trace_out_subsystem(Gamma_TFD, keep)
 
     #HL = covmat_to_hamil(Gamma_reduced)
     HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-
     """
     HL = np.zeros((2*N,2*N))
     for i in range(2*N):
@@ -758,7 +757,6 @@ def build_H_coupling(N,Gamma_TFD):
             HL[i,i] = m_squared + 2 * k 
         if i > N-1:
             HL[i,i] = 1
-    """
 
     #N = Gamma_TFD.shape[0]//4
     HL_full = np.zeros((4*N, 4*N))
@@ -776,50 +774,8 @@ def build_H_coupling(N,Gamma_TFD):
 
     H_LR = HL_full+HR_full
 
-    #H_coupling += H_LR
-
-    return H_coupling
-
-
-
-
-
-
-def sym(A): 
-    return 0.5*(A + A.T)
-
-
-
-def measure_left_side(Gamma,bdy_len):
-    n = Gamma.shape[0]//2
-    na = bdy_len
-    Gamma_AA = np.zeros((2*na,2*na))
-
-    Gamma_AA = np.zeros((2*na,2*na))
-    for i in range(1,3):
-        for j in range(1,3):
-
-            Gamma_AA[i*na-na:i*na,j*na-na:j*na]=Gamma[i*n-na:i*n,j*n-na:j*n]
-       
-    Gamma_BB = np.zeros((2*na,2*na))
-    for i in range(2):
-        for j in range(2):
-            Gamma_BB[i*na:i*na+na,j*na:j*na+na]=Gamma[i*n:i*n+na,j*n:j*n+na]
-
-    Gamma_AB = np.zeros((2*na,2*na))
-
-    for i in range(1,3):
-        for j in range(2):
-            Gamma_AB[i*na-na:i*na,j*na:j*na+na]=Gamma[i*n-na:i*n,j*n:j*n+na]
-
-    m = Gamma_BB.shape[0]//2
-    P = momentum_projection_matrix(m)
-    V_bdy = Gamma_AA - Gamma_AB @ np.linalg.pinv(P @ Gamma_BB @ P) @ Gamma_AB.T
-
-    return V_bdy
-
-
-from scipy.linalg import eigh
+    H_coupling_OG += H_LR
+    return H_coupling_OG
 
 def modular_filter_matrix(
     K,
@@ -952,8 +908,7 @@ def build_filtered_traversable_coupling(
 
     return H_int
 
-
-def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,coupling,t_couple,t0,cutoff):
+def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,t_couple,t0,cutoff):
     q = insert_idx
     if wormhole == False:
         N = 2*n_one_side
@@ -1157,28 +1112,25 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
     # couple the two sides
     #######
 
-    if coupling==True:
-        carrier_indices1 = np.arange(0,insert_idx)
-        carrier_indices2 = np.arange(insert_idx+1,bdy_len)
-        carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
-        H_int = build_filtered_traversable_coupling(
-            HL,
-            bdy_len,
-            carrier_indices,
-            eta=2.0,
-            cutoff=cutoff,
-            filter_type="lorentz"
-        )
-        H_coupling_padded = pad_matrix_for_observer(H_int)
-     
-        S_coupling = expm(Omega @ H_int * t_couple)
-        Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 
-        S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
-        Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
-    else:
-        Gamma_coupled = Gamma_forward
-        Gamma_coupled_observer = Gamma_forward_observer
+    carrier_indices1 = np.arange(0,insert_idx)
+    carrier_indices2 = np.arange(insert_idx+1,bdy_len)
+    carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
+    H_int = build_filtered_traversable_coupling(
+        HL,
+        bdy_len,
+        carrier_indices,
+        eta=2.0,
+        cutoff=cutoff,
+        filter_type="lorentz"
+    )
+    H_coupling_padded = pad_matrix_for_observer(H_int)
+    
+    S_coupling = expm(Omega @ H_int * t_couple)
+    Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
+
+    S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
+    Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
 
     ######
     # evolve state forwards in time with KR
@@ -1213,50 +1165,1073 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,n_tube,couplin
     Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
     return Gamma_final_observer, Gamma_final, Gamma_forward_observer, Gamma_forward
 
+def orthogonal_with_first_col(v, eps=1e-12):
+    """
+    Return an orthogonal matrix Q such that Q[:,0] = v (unit-norm).
+    Deterministic via Householder.
+    """
+    v = np.asarray(v, float)
+    v = v / (np.linalg.norm(v) + eps)
+    m = v.size
+
+    e1 = np.zeros(m); e1[0] = 1.0
+    # If v already equals e1, Q = I
+    if np.linalg.norm(v - e1) < 1e-10:
+        return np.eye(m)
+
+    # Householder that maps e1 -> v (or v -> e1; both work up to transpose)
+    u = e1 - v
+    u = u / (np.linalg.norm(u) + eps)
+    H = np.eye(m) - 2.0 * np.outer(u, u)
+
+    # H @ e1 = v
+    return H
 
 
-#Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=.2,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=33,coupling=True,t_couple=.77,t0=2.95,cutoff=400)
+def sym(A): 
+    return 0.5*(A + A.T)
 
+def invsqrt_psd(M, eps=1e-10):
+    M = sym(M)
+    w, U = np.linalg.eigh(M)
+    w = np.clip(w, eps, None)
+    return U @ np.diag(1/np.sqrt(w)) @ U.T
+
+def build_passive_decoder_from_observer(V_OR_xxpp, m, eps=1e-10):
+    V = sym(V_OR_xxpp)
+
+    xO = 0
+    xR = np.arange(1, m+1)
+    pO = m+1
+    pR = np.arange(m+2, 2*m+2)
+
+    A = V[np.ix_([xO, pO], [xO, pO])]
+
+    idxR = np.concatenate([xR, pR])
+    B = V[np.ix_(idxR, idxR)]
+    B_xx = B[:m, :m]
+    B_pp = B[m:, m:]
+
+    C = V[np.ix_([xO, pO], idxR)]
+    Cx = C[:, :m]
+    Cp = C[:, m:]
+
+    Ainv = np.linalg.inv(sym(A))
+    Bxx_invsqrt = invsqrt_psd(B_xx, eps=eps)
+    Bpp_invsqrt = invsqrt_psd(B_pp, eps=eps)
+
+    Mx = Bxx_invsqrt @ (Cx.T @ Ainv @ Cx) @ Bxx_invsqrt
+    Mp = Bpp_invsqrt @ (Cp.T @ Ainv @ Cp) @ Bpp_invsqrt
+    M = sym(Mx + Mp)
+
+    w, U = np.linalg.eigh(M)
+    u = U[:, np.argmax(w)]
+
+    v = Bxx_invsqrt @ u
+    v = v / np.linalg.norm(v)
+    
+    #Q, _ = np.linalg.qr(np.column_stack([v, np.random.randn(m, m-1)]))
+    Q = orthogonal_with_first_col(v)
+    #if np.dot(Q[:,0], v) < 0:
+    #    Q[:,0] *= -1
+    O = Q.T
+    return O, v
+
+def passive_decode_right_block(B_xxpp, O):
+    m = O.shape[0]
+    S = np.block([
+        [O, np.zeros((m,m))],
+        [np.zeros((m,m)), O]
+    ])
+    Bout = S @ sym(B_xxpp) @ S.T
+    return sym(Bout)
+
+def first_mode_from_block(B_xxpp):
+    m = B_xxpp.shape[0] // 2
+    x1 = 0
+    p1 = m + 0
+    V1 = B_xxpp[np.ix_([x1, p1], [x1, p1])]
+    return sym(V1)
+
+def extract_block_xxpp(Gamma, modes):
+    n = Gamma.shape[0]//2
+    x = np.array(modes)
+    p = x + n
+    idx = np.concatenate([x, p])
+    return sym(Gamma[np.ix_(idx, idx)])
+
+def right_segment_ids(teleported_id, n, m):
+    # right ring ids are n..2n-1
+    start = teleported_id - (m//2)
+    start = max(start, n)
+    start = min(start, 2*n - m)
+    return np.arange(start, start + m)
+
+def left_segment_ids(insert_id, n, m):
+    # right ring ids are n..2n-1
+    start = insert_id - (m//2)
+    start = max(start, 0)
+    start = min(start, n - m)
+    return np.arange(start, start + m)
+
+def right_segment_ids_centered(center_idx,n,m):
+    i = m//2
+    if m == 1:
+        segment_telep=np.array([center_idx+n])
+    elif center_idx  - i >= 0  and center_idx  + i < n:
+        segment_telep = np.arange(center_idx + n - i, center_idx + n + i)
+    elif center_idx - i < 0 :
+        diff = np.abs(center_idx - i)
+        segment_telep_1 = np.arange(2*n-diff,2*n)
+        segment_telep_2 = np.arange(n ,center_idx + n + i)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    elif center_idx + i >= n:
+        diff = center_idx + i - n
+        segment_telep_1 = np.arange(center_idx + n - i,2*n)
+        segment_telep_2 = np.arange(n,n + diff)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    return(segment_telep)
+
+
+def left_segment_ids_centered(center_idx,n,m):
+    i = m//2
+    if m == 1:
+        segment_telep=np.array([center_idx])
+    elif center_idx  - i >= 0  and center_idx  + i < n:
+        segment_telep = np.arange(center_idx - i, center_idx + i)
+    elif center_idx - i < 0 :
+        diff = np.abs(center_idx - i)
+        segment_telep_1 = np.arange(n-diff,n)
+        segment_telep_2 = np.arange(0 ,center_idx + i)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    elif center_idx + i >= n:
+        diff = center_idx + i - n
+        segment_telep_1 = np.arange(center_idx - i,n)
+        segment_telep_2 = np.arange(0,diff)
+        segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+    return(segment_telep)
+
+def extract_block_xxpp_LRO(Gamma, mode_ids, Ntot):
+    """
+    Gamma ordering: [x_L (n), x_R (n), x_O (1), p_L (n), p_R (n), p_O (1)]
+    mode_ids: list/array of mode IDs in 0..Ntot-1, where:
+        left j -> j
+        right j -> n + j
+        obs -> 2n
+    Returns block covariance in xxpp ordering for those modes:
+        [x_modes..., p_modes...]
+    """
+    mode_ids = np.array(mode_ids, dtype=int)
+    x_idx = mode_ids
+    p_idx = mode_ids + Ntot
+    idx = np.concatenate([x_idx, p_idx])
+    return sym(Gamma[np.ix_(idx, idx)])
+
+
+
+
+def build_V_OR_xxpp(Gamma_global, obs_idx, right_seg, Ntot):
+    modes = np.concatenate([[obs_idx], right_seg])
+    return extract_block_xxpp_LRO(Gamma_global, modes, Ntot)
+
+def make_input_covariance(s, theta):
+    Rot = np.array([[np.cos(theta), -np.sin(theta)],
+                    [np.sin(theta),  np.cos(theta)]])
+    Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
+                              [0, np.exp( 2*s)]])
+    return sym(Rot @ Squeeze @ Rot.T)
+
+def make_rotation(M):
+    """Force a 2x2 orthogonal matrix to have det=+1 (proper rotation)."""
+    M = M.copy()
+    if np.linalg.det(M) < 0:
+        M[:, 1] *= -1
+    return M
+
+
+def decoder_from_X_symplectic_old(X, mode="rotation+squeeze", tol=1e-10):
+    U, s, Vt = np.linalg.svd(X)
+    U = make_rotation(U)
+    if mode == "rotation":
+        return U.T
+
+    s1, s2 = s
+    s1 = max(s1, tol)
+    s2 = max(s2, tol)
+
+    r = 0.5*np.log(s1/s2)
+    S = np.diag([np.exp(-r/2), np.exp(r/2)])  # det=1
+
+    return S @ U.T
+
+
+def get_nearest_orthogonal_symplectic(M):
+    """
+    Forces a matrix into the nearest orthogonal symplectic matrix.
+    An orthogonal symplectic matrix must satisfy the block form:
+    [[A, -B], [B, A]] where A + iB is unitary.
+    """
+    N = M.shape[0] // 2
+    # 1. Project onto the block-circulant structure (Symplectic symmetry)
+    # Extract blocks
+    M11, M12 = M[:N, :N], M[:N, N:]
+    M21, M22 = M[N:, :N], M[N:, N:]
+    
+    # Average the blocks to enforce [[A, -B], [B, A]]
+    A = 0.5 * (M11 + M22)
+    B = 0.5 * (M21 - M12)
+    
+    # 2. Project onto the Unitary group (Orthogonality)
+    # Form the complex matrix A + iB
+    complex_mat = A + 1j * B
+    # Use polar decomposition to find the nearest unitary matrix
+    U_complex, _ = polar(complex_mat)
+    
+    # 3. Reconstruct the 2N x 2N real matrix
+    O = np.block([
+        [U_complex.real, -U_complex.imag],
+        [U_complex.imag,  U_complex.real]
+    ])
+    return O
+
+
+def decoder_from_X_symplectic(X):
+    U, s, Vt = np.linalg.svd(X)
+    O1= U.copy()
+    O2 = Vt.copy()
+
+    if det(U)<0:
+        O1[:,1]*=-1
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+
+    if det(U)<0:
+        loss = np.diag((eta,-eta))
+    else:
+       loss = np.diag((eta,eta))  
+
+
+    return O1 @ squeeze @ O2
+
+
+
+def decompose_X(X):
+    U, s, Vt = np.linalg.svd(X)
+    O1= U.copy()
+    O2 = Vt.copy()
+
+    if det(U)<0:
+        O1[:,1]*=-1
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+
+    if det(U)<0:
+        loss = np.diag((eta,-eta))
+    else:
+       loss = np.diag((eta,eta))  
+
+
+    return O1, loss, squeeze, O2
+
+
+def decoder_from_X_flip(X):
+    U, s, Vt = np.linalg.svd(X)
+
+    s1, s2 = s
+    D = np.diag((s2,s1))
+    r = 0.5*np.log(s2/s1)
+    squeeze = np.diag([np.exp(-r), np.exp(r)])
+
+    eta = np.sqrt(s1 * s2)
+    loss = np.diag((s1,s2))
+
+
+    return U @ squeeze @ Vt
+
+
+
+
+def sym(A): 
+    return 0.5*(A + A.T)
+
+
+def pack_params(X, Y):
+    # Y symmetric
+    return np.array([X[0,0], X[0,1], X[1,0], X[1,1], Y[0,0], Y[0,1], Y[1,1]], dtype=float)
+
+def unpack_params(p):
+    a,b,c,d,y11,y12,y22 = p
+    X = np.array([[a,b],[c,d]], dtype=float)
+    Y = np.array([[y11,y12],[y12,y22]], dtype=float)
+    return X, Y
+
+def residuals(p, Vins, Vouts):
+    X, Y = unpack_params(p)
+    r = []
+    for Vin, Vout in zip(Vins, Vouts):
+        E = sym(Vout - (X @ Vin @ X.T + Y))
+        r.extend([E[0,0], E[0,1], E[1,1]])  # 3 independent comps
+    return np.array(r, dtype=float)
+
+
+def fit_gaussian_channel(Vins, Vouts, X0=None, Y0=None, lam=1e-3, iters=200):
+    Vins  = [sym(V) for V in Vins]
+    Vouts = [sym(V) for V in Vouts]
+
+    if X0 is None:
+        X0 = np.eye(2)
+    if Y0 is None:
+        # crude initial Y as average difference
+        Y0 = sym(np.mean([Vout - X0@Vin@X0.T for Vin,Vout in zip(Vins,Vouts)], axis=0))
+
+    p = pack_params(X0, Y0)
+
+    for _ in range(iters):
+        r = residuals(p, Vins, Vouts)
+        cost = r @ r
+
+        # numerical Jacobian (7 params)
+        J = np.zeros((len(r), len(p)))
+        eps = 1e-6
+        for j in range(len(p)):
+            dp = np.zeros_like(p); dp[j] = eps
+            r2 = residuals(p + dp, Vins, Vouts)
+            J[:,j] = (r2 - r) / eps
+
+        # LM step: (J^T J + lam I) delta = J^T r
+        A = J.T @ J + lam*np.eye(len(p))
+        g = J.T @ r
+        delta = np.linalg.solve(A, g)
+
+        p_new = p - delta
+        r_new = residuals(p_new, Vins, Vouts)
+        cost_new = r_new @ r_new
+
+        # accept/reject, update damping
+        if cost_new < cost:
+            p = p_new
+            lam *= 0.7
+        else:
+            lam *= 2.0
+
+        if np.linalg.norm(delta) < 1e-10:
+            break
+
+    X, Y = unpack_params(p)
+    return X, sym(Y)
+
+def reorder_to_block_form(Gamma):
+    """
+    Reorders 2-mode covariance matrix from [x0,p0,x1,p1] to [x0,x1,p0,p1]
+    """
+    perm = [0, 2, 1, 3]
+    return Gamma[np.ix_(perm, perm)]
+
+def tmsv_cov(r):
+    """
+    Returns 4x4 covariance matrix for a two-mode squeezed vacuum.
+    Mode 0: inserted into system
+    Mode 1: external observer
+    """
+    ch = np.cosh(2 * r)
+    sh = np.sinh(2 * r)
+    Z = np.diag([1, -1])
+    
+    cov = 0.5 * np.block([
+        [ch * np.eye(2),     sh * Z],
+        [sh * Z,             ch * np.eye(2)]
+    ])
+
+    cov = reorder_to_block_form(cov)
+    return cov
+
+def fidelity_stable(V1, V2):
+    V1 = 0.5*(V1 + V1.T)
+    V2 = 0.5*(V2 + V2.T)
+    n = V1.shape[0] // 2
+    omega = symplectic_form(n)
+
+    Vsum = V1 + V2
+    V_aux = omega.T @ np.linalg.inv(Vsum) @ (0.25 * omega + V2 @ omega @ V1)
+
+    I = np.eye(2*n)
+    A = V_aux @ omega
+
+    # A^{-2} = solve(A, solve(A, I))
+    Ainv2 = np.linalg.solve(A, np.linalg.solve(A, I))
+    inside = I + 0.25 * Ainv2
+
+    F_tot4 = np.linalg.det(2 * (sqrtm(inside) + I) @ V_aux)
+    F_tot = np.real_if_close(F_tot4)**0.25
+    F0 = F_tot / (np.linalg.det(Vsum)**0.25)
+
+    return float(np.real(F0))
+
+
+def decode_on_B_xxpp(V_RB_xxpp, S_dec,Y,subtract_Y):
+    I2 = np.eye(2)
+    # xxpp ordering: (xR, xB, pR, pB)
+    # decoding acts on (xB,pB) => indices [1,3], not contiguous.
+    V = 0.5*(V_RB_xxpp + V_RB_xxpp.T)
+    idx_R = [0, 2]
+    idx_B = [1, 3]
+
+    Vout = V.copy()
+
+    # transform blocks: B -> S_dec B S_dec^T, C -> C S_dec^T
+    A = V[np.ix_(idx_R, idx_R)]
+    B = V[np.ix_(idx_B, idx_B)]
+    C = V[np.ix_(idx_R, idx_B)]
+
+    if subtract_Y == True:
+        B-=Y
+
+    B2 = S_dec @ B @ S_dec.T
+    C2 = C @ S_dec.T
+
+    Vout[np.ix_(idx_R, idx_R)] = A
+    Vout[np.ix_(idx_B, idx_B)] = B2
+    Vout[np.ix_(idx_R, idx_B)] = C2
+    Vout[np.ix_(idx_B, idx_R)] = C2.T
+
+    return 0.5*(Vout + Vout.T)
+
+
+def entanglement_fidelity_gaussian(X, Y, S,subtract_Y,r=1.0):
+    V0 = tmsv_cov(r)
+    V1 = apply_channel_to_second_mode_xxpp(V0, X, Y)
+    V1_dec = decode_on_B_xxpp(V1,inv(S),Y,subtract_Y)
+    # zero means:
+    #mu0 = np.zeros(4)
+    #mu1 = np.zeros(4)  
+    return fidelity_stable(V0,V1_dec)
+
+def gaussian_fidelity_mixed(Gamma1, Gamma2):
+    """
+    Computes the fidelity between two 1-mode mixed Gaussian states
+    assuming zero displacement (centered states).
+    
+    Parameters:
+        Gamma1, Gamma2: 2x2 real symmetric covariance matrices
+    
+    Returns:
+        Fidelity F ∈ [0, 1]
+    """
+    det1 = np.linalg.det(Gamma1)
+    det2 = np.linalg.det(Gamma2)
+    det_sum = np.linalg.det(Gamma1 + Gamma2)
+
+    delta = (det1 - 0.25) * (det2 - 0.25)
+
+    F = 1.0 / (np.sqrt(det_sum + delta) - np.sqrt(delta))
+    return F
+
+def apply_channel_to_second_mode_xxpp(V_RB_xxpp, X, Y):
+    """
+    Apply a 1-mode Gaussian channel (X,Y) to mode B of a 2-mode covariance matrix
+    given in xxpp ordering: (xR, xB, pR, pB).
+
+    V_RB_xxpp: 4x4 covariance in order [xR, xB, pR, pB]
+    X, Y: 2x2 with respect to (xB, pB)
+    """
+    V = sym(V_RB_xxpp)
+    X = np.asarray(X, float)
+    Y = sym(np.asarray(Y, float))
+
+    # Indices for the R and B modes in xxpp ordering
+    idx_R = [0, 2]  # (xR, pR)
+    idx_B = [1, 3]  # (xB, pB)
+
+    # Extract 2x2 blocks in (x,p) ordering for each mode
+    A = V[np.ix_(idx_R, idx_R)]   # Cov of R
+    B = V[np.ix_(idx_B, idx_B)]   # Cov of B
+    C = V[np.ix_(idx_R, idx_B)]   # Cross-cov R-B
+
+    # Transform blocks under channel on B
+    A_out = A
+    C_out = C @ X.T
+    B_out = X @ B @ X.T + Y
+
+    # Reassemble full 4x4 in xxpp ordering
+    V_out = V.copy()
+    V_out[np.ix_(idx_R, idx_R)] = A_out
+    V_out[np.ix_(idx_R, idx_B)] = C_out
+    V_out[np.ix_(idx_B, idx_R)] = C_out.T
+    V_out[np.ix_(idx_B, idx_B)] = B_out
+
+    return sym(V_out)
+
+def sym(A): return 0.5*(A + A.T)
+
+def noise_metrics(X, Y):
+    Y = sym(Y)
+    detX = np.linalg.det(X)
+    y_eff = 0.5*np.trace(Y)  # average added noise
+    y_det = np.sqrt(max(np.linalg.det(Y), 0.0))
+    y_iso_min = abs(1 - detX)/2  # phase-insensitive quantum-limited scale
+    ratio = y_eff / (y_iso_min + 1e-12)
+    return detX, y_eff, y_det, y_iso_min, ratio
+
+
+def build_rankK_coupling_LRO(
+    N_boundary,        # n in your L/R (without observer): left has n, right has n
+    left_seg,          # length m, values in [0..n-1]
+    right_seg,         # length m, values in [n..2n-1]  (GLOBAL mode ids in LRO convention)
+    O_L,               # K x m
+    O_R,               # K x m
+    g=None,            # None or length-K array of coupling strengths
+    include_observer=False
+):
+    """
+    Returns H_coup for ordering:
+      [x_L(n), x_R(n), x_O, p_L(n), p_R(n), p_O]  if include_observer
+      [x_L(n), x_R(n),       p_L(n), p_R(n)]      if not include_observer
+
+    Notes:
+      - left_seg must be left mode IDs (0..n-1)
+      - right_seg must be right mode IDs (n..2n-1)
+      - O_L, O_R are K×m weights defining collective modes on those segments
+    """
+    n = N_boundary
+    m = len(left_seg)
+    assert len(right_seg) == m
+    K = O_L.shape[0]
+    assert O_L.shape == (K, m)
+    assert O_R.shape == (K, m)
+
+    if g is None:
+        g = np.ones(K)
+    g = np.asarray(g, float)
+    assert g.shape == (K,)
+
+    G = np.diag(g)  # K×K
+    # physical segment coupling J = O_L^T G O_R  (m×m)
+    J = O_L.T @ G @ O_R
+
+    if include_observer:
+        Ntot = 2*n + 1   # total modes including observer
+        dim = 2*Ntot
+        obs = 2*n
+    else:
+        Ntot = 2*n
+        dim = 2*Ntot
+
+    H = np.zeros((dim, dim), dtype=float)
+
+    # ---- x-x block coupling between physical modes in left_seg and right_seg ----
+    # In LRO ordering, x indices are just mode ids themselves.
+    xL = np.array(left_seg, dtype=int)
+    xR = np.array(right_seg, dtype=int)
+
+    # Place 1/2 * J into H[xL, xR] using segment-local indexing
+    # We need to map segment-local (0..m-1) pairs to global indices.
+    for a in range(m):
+        for b in range(m):
+            H[xL[a], xR[b]] += 0.5 * J[a, b]
+            H[xR[b], xL[a]] += 0.5 * J[a, b]  # symmetric (since we used same J)
+
+    # ---- p-p block coupling ----
+    # p index = mode_id + Ntot
+    pL = xL + Ntot
+    pR = xR + Ntot
+    for a in range(m):
+        for b in range(m):
+            H[pL[a], pR[b]] += 0.5 * J[a, b]
+            H[pR[b], pL[a]] += 0.5 * J[a, b]
+
+    # Symmetrize to be safe
+    H = 0.5 * (H + H.T)
+    return H
+
+
+def build_coupling_LRO(
+    N_boundary,        # n in your L/R (without observer): left has n, right has n
+    left_seg,          # length m, values in [0..n-1]
+    right_seg,         # length m, values in [n..2n-1]  (GLOBAL mode ids in LRO convention)
+    O_L,               # K x m
+    O_R,               # K x m
+    g=None,            # None or length-K array of coupling strengths
+    include_observer=False
+):
+    """
+    Returns H_coup for ordering:
+      [x_L(n), x_R(n), x_O, p_L(n), p_R(n), p_O]  if include_observer
+      [x_L(n), x_R(n),       p_L(n), p_R(n)]      if not include_observer
+
+    Notes:
+      - left_seg must be left mode IDs (0..n-1)
+      - right_seg must be right mode IDs (n..2n-1)
+      - O_L, O_R are K×m weights defining collective modes on those segments
+    """
+    n = N_boundary
+    m = len(left_seg)
+    assert len(right_seg) == m
+    KO = O_L.shape[0]
+    if g is None:
+        g = np.ones(KO)
+    g = np.asarray(np.ones(KO), float)
+    
+    G = np.diag(g)  # K×K
+    # physical segment coupling J = O_L^T G O_R  (m×m)
+    J = O_L.T @ G @ O_R
+
+    if include_observer:
+        Ntot = 2*n + 1   # total modes including observer
+        dim = 2*Ntot
+        obs = 2*n
+    else:
+        Ntot = 2*n
+        dim = 2*Ntot
+
+    H = np.zeros((dim, dim), dtype=float)
+
+    # ---- x-x block coupling between physical modes in left_seg and right_seg ----
+    # In LRO ordering, x indices are just mode ids themselves.
+    xL = np.array(left_seg, dtype=int)
+    xR = np.array(right_seg, dtype=int)
+
+    # Place 1/2 * J into H[xL, xR] using segment-local indexing
+    # We need to map segment-local (0..m-1) pairs to global indices.
+    for a in range(m):
+        for b in range(m):
+            H[xL[a], xR[b]] += 0.5 * J[a, b]
+            H[xR[b], xL[a]] += 0.5 * J[a, b]  # symmetric (since we used same J)
+
+    # ---- p-p block coupling ----
+    # p index = mode_id + Ntot
+    pL = xL + Ntot
+    pR = xR + Ntot
+    for a in range(m):
+        for b in range(m):
+            H[pL[a], pR[b]] += 0.5 * J[a, b]
+            H[pR[b], pL[a]] += 0.5 * J[a, b]
+
+    # Symmetrize to be safe
+    H = 0.5 * (H + H.T)
+    return H
+
+def right_segment_ids(teleported_id, n, m):
+    # right ring ids are n..2n-1
+    start = teleported_id - (m//2)
+    start = max(start, n)
+    start = min(start, 2*n - m)
+    return np.arange(start, start + m)
+
+def left_segment_ids(insert_id, n, m):
+    # right ring ids are n..2n-1
+    start = insert_id - (m//2)
+    start = max(start, 0)
+    start = min(start, n - m)
+    return np.arange(start, start + m)
+
+def X_metrics(X):
+    s = np.linalg.svd(X, compute_uv=False)     # singular values
+    s = np.sort(s)[::-1]
+    spec = s[0]
+    fro  = np.linalg.norm(X, 'fro')
+    det  = abs(np.linalg.det(X))
+    return {"s1": s[0], "s2": s[1], "spec": spec, "fro": fro, "det": det}
+
+
+
+############
+# Begin Active Decoder
+############
+import numpy as np
+
+def sym(A): 
+    return 0.5*(A + A.T)
+
+def Omega_xxpp(m):
+    I = np.eye(m); Z = np.zeros((m,m))
+    return np.block([[Z, I], [-I, Z]])
+
+def block_diag_2(A, B):
+    return np.block([[A, np.zeros((A.shape[0], B.shape[1]))],
+                     [np.zeros((B.shape[0], A.shape[1])), B]])
+
+def mode_permutation_symplectic_xxpp_old(m, perm):
+    """
+    perm is a permutation of modes [0..m-1] applied to both x and p parts.
+    Returns 2m×2m symplectic permutation matrix P in xxpp ordering.
+    """
+    perm = np.asarray(perm, dtype=int)
+    Px = np.eye(m)[:, perm]
+    Pp = np.eye(m)[:, perm]
+    return np.block([[Px, np.zeros((m,m))],
+                     [np.zeros((m,m)), Pp]])
+
+def partition_V_OR_xxpp(V_OR_xxpp, m):
+    """
+    V_OR_xxpp is 2(1+m)×2(1+m) in ordering:
+      [xO, xR1..xRm, pO, pR1..pRm]
+    Returns A (2×2), B (2m×2m), C (2×2m).
+    """
+    V = sym(V_OR_xxpp)
+    xO = 0
+    xR = np.arange(1, m+1)
+    pO = m+1
+    pR = np.arange(m+2, 2*m+2)
+
+    idxO = np.array([xO, pO])
+    idxR = np.concatenate([xR, pR])
+
+    A = V[np.ix_(idxO, idxO)]
+    B = V[np.ix_(idxR, idxR)]
+    C = V[np.ix_(idxO, idxR)]
+    return sym(A), sym(B), C
+
+def conditional_covariance(B, C, A, eps=1e-12):
+    """
+    V_{R|O} = B - C^T A^{-1} C, stabilized inverse for A.
+    """
+    w, U = np.linalg.eigh(sym(A))
+    w = np.clip(w, eps, None)
+    Ainv = U @ np.diag(1.0/w) @ U.T
+    return sym(B - C.T @ Ainv @ C)
+
+def williamson_S_from_strawberry(V):
+    """
+    Your williamson_strawberry returns SinvT, Db, nus.
+    Recover the symplectic S such that V = S^T Db S.
+    """
+    SinvT, Db, nus = williamson_strawberry(sym(V))
+    S = np.linalg.inv(SinvT).T
+    return S, Db, nus
+
+def active_decoder_williamson_from_VOR(V_OR_xxpp, m):
+    """
+    Build an active (symplectic) decoder on the right block using Williamson on V_{R|O}.
+
+    Returns:
+      S_dec (2m×2m) : symplectic acting on right block
+      perm (m,)     : mode permutation applied so mode 0 is best
+      nus_c (m,)    : conditional symplectic eigenvalues (unsorted)
+      Vc            : conditional covariance V_{R|O}
+    """
+    A, B, C = partition_V_OR_xxpp(V_OR_xxpp, m)
+    Vc = conditional_covariance(B, C, A)
+
+    S_cT, Db_c, nus_c = williamson_strawberry(sym(Vc))
+    S_c = S_cT.T
+
+    # sort modes so smallest conditional nu is first
+    perm = np.argsort(nus_c)
+    P = mode_permutation_symplectic_xxpp(m, perm)
+
+    # decoder acts on R: R' = (P S_c) R
+    S_dec = P @ S_c
+
+    # sanity check symplecticity
+    Om = Omega_xxpp(m)
+    err = np.linalg.norm(S_dec @ Om @ S_dec.T - Om)
+    if err > 1e-7:
+        raise ValueError(f"S_dec not symplectic: ||SΩS^T-Ω||={err:.2e}")
+
+    return S_dec, perm, nus_c, Vc
+
+
+import numpy as np
+
+def sym(A): return 0.5*(A + A.T)
+
+def Omega_xxpp(m):
+    Z = np.zeros((m,m))
+    I = np.eye(m)
+    return np.block([[Z, I],[-I, Z]])
+
+def clip_symplectic_squeezing_from_williamson_old(S, rmax=1.2, eps=1e-12):
+    """
+    Minimal 'gain cap': project S onto something with bounded singular values.
+    Not perfect mathematically, but very effective numerically for preventing Y blow-up.
+    """
+    # SVD of S (not symplectic-canonical, but bounds Euclidean gain)
+    U, s, Vt = np.linalg.svd(S)
+    s = np.clip(s, np.exp(-rmax), np.exp(rmax))
+    return U @ np.diag(s) @ Vt
+
+def active_decoder_williamson_from_VOR_SNR(
+    V_OR_xxpp,
+    m,
+    lam=1e-4,
+    ridge=1e-8,
+    rmax=None,
+):
+    """
+    Active decoder built from conditional Williamson, but with variance-penalized mode choice.
+
+    - Still computes Vc = V_{R|O}
+    - Still does Williamson: Vc = S_c^T D S_c
+    - BUT: choose which decoded mode is "first" using an SNR objective instead of min(nu)
+    - Optional: cap squeezing of S_dec via rmax to prevent huge gain
+
+    Returns:
+      S_dec (2m×2m), perm, nus_c, Vc
+    """
+    A, B, C = partition_V_OR_xxpp(V_OR_xxpp, m)      # you already have this
+    Vc = conditional_covariance(B, C, A)             # you already have this
+    Vc = sym(Vc)
+
+    # Williamson on conditional covariance
+    S_cT, Db_c, nus_c = williamson_strawberry(Vc)
+    S_c = S_cT.T
+
+    # ---- SNR-based mode scoring in the Williamson basis ----
+    # Transform conditional block into Williamson coordinates:
+    # R_w = S_c R_phys  (since Vc = S_c^T D S_c)
+    # Cov in w-basis is D = Db_c.
+    # We also need observer correlations expressed in w-basis.
+    # The conditional covariance formula used Vc = B - C^T A^{-1} C;
+    # correlations of O with R are still in C. We map C into w-basis:
+    # C_w = C * S_c^{-1,T}  if you treat cov blocks carefully.
+    #
+    # In xxpp, C is (2 × 2m): rows [xO,pO], cols [xR..., pR...].
+    # If R_w = S_c R_phys, then R_phys = S_c^{-1} R_w, so
+    # Cov(O, R_w) = Cov(O, R_phys) (S_c^{-1})^T = C @ (S_c^{-1})^T
+    SinvT = np.linalg.inv(S_c).T
+    C_w = C @ SinvT                                # shape (2, 2m)
+
+    # Split x/p parts in the w-basis (still xxpp layout)
+    Cx_w = C_w[:, :m]                               # (2×m)
+    Cp_w = C_w[:, m:]                               # (2×m)
+
+    # Build a simple SNR score per Williamson mode k:
+    # signal_k = ||Cov(O, x_k)||^2 + ||Cov(O, p_k)||^2
+    # var_k = D_xx(k,k) + D_pp(k,k) (+ lam)
+    Dx = np.diag(Db_c)[:m]                          # nu_k
+    Dp = np.diag(Db_c)[m:]                          # nu_k again
+    var = Dx + Dp + lam
+
+    signal = np.sum(Cx_w**2, axis=0) + np.sum(Cp_w**2, axis=0)   # length m
+    score = signal / var
+
+    k_best = int(np.argmax(score))
+
+    # Permute Williamson modes to bring k_best -> 0
+    perm = np.arange(m)
+    perm[0], perm[k_best] = perm[k_best], perm[0]
+    P = mode_permutation_symplectic_xxpp(m, perm)
+
+    S_dec = P @ S_c
+
+    # Optional: cap gain (prevents huge Y for large m)
+    if rmax is not None:
+        S_dec = clip_symplectic_squeezing_from_williamson(S_dec, rmax=rmax)
+
+    # Symplectic sanity check (only valid if we did not clip via SVD)
+    if rmax is None:
+        Om = Omega_xxpp(m)
+        err = np.linalg.norm(S_dec @ Om @ S_dec.T - Om)
+        if err > 1e-7:
+            raise ValueError(f"S_dec not symplectic: ||SΩS^T-Ω||={err:.2e}")
+
+    return S_dec, perm, nus_c, Vc, score
+
+def apply_right_decoder_to_VOR(V_OR_xxpp, S_dec):
+    """
+    Apply (I_2 ⊕ S_dec) to the OR covariance (xxpp ordering).
+    """
+    m = S_dec.shape[0] // 2
+    S_tot = block_diag_2(np.eye(2), S_dec)
+    Vp = S_tot @ sym(V_OR_xxpp) @ S_tot.T
+    return sym(Vp)
+
+def first_decoded_right_mode_block(V_OR_dec_xxpp, m):
+    """
+    After decoding, extract the 2×2 (x,p) block of the *first right mode*.
+    In OR xxpp ordering, the first right mode has:
+      x index = 1
+      p index = m+2
+    """
+    x1 = 1
+    p1 = m + 2
+    return sym(V_OR_dec_xxpp[np.ix_([x1, p1], [x1, p1])])
+
+def decode_block_first_mode(B_xxpp, S_dec):
+    """
+    Apply symplectic decoder S_dec (ROW map) to block covariance B_xxpp:
+      V_dec = S_dec B S_dec^T
+    Return first decoded mode covariance (2×2) in (x,p) ordering.
+    For xxpp ordering: x1 index=0, p1 index=m.
+    """
+    B = sym(B_xxpp)
+    Vdec = sym(S_dec @ B @ S_dec.T)
+    m = B.shape[0] // 2
+    idx = [0, m]  # x1, p1
+    return sym(Vdec[np.ix_(idx, idx)]), Vdec
+
+
+
+
+def measure_left_side(Gamma,bdy_len):
+    n = Gamma.shape[0]//2
+    na = bdy_len
+    Gamma_AA = np.zeros((2*na,2*na))
+
+    Gamma_AA = np.zeros((2*na,2*na))
+    for i in range(1,3):
+        for j in range(1,3):
+
+            Gamma_AA[i*na-na:i*na,j*na-na:j*na]=Gamma[i*n-na:i*n,j*n-na:j*n]
+       
+    Gamma_BB = np.zeros((2*na,2*na))
+    for i in range(2):
+        for j in range(2):
+            Gamma_BB[i*na:i*na+na,j*na:j*na+na]=Gamma[i*n:i*n+na,j*n:j*n+na]
+
+    Gamma_AB = np.zeros((2*na,2*na))
+
+    for i in range(1,3):
+        for j in range(2):
+            Gamma_AB[i*na-na:i*na,j*na:j*na+na]=Gamma[i*n-na:i*n,j*n:j*n+na]
+
+    m = Gamma_BB.shape[0]//2
+    P = momentum_projection_matrix(m)
+    V_bdy = Gamma_AA - Gamma_AB @ np.linalg.pinv(P @ Gamma_BB @ P) @ Gamma_AB.T
+
+    return V_bdy
+
+
+
+def cp_check(X, Y, tol=1e-9):
+    Omega=symplectic_form(X.shape[0]//2)
+    M = Y + 1j*(Omega - X@Omega@X.T)
+    eigs = np.linalg.eigvalsh(M)
+    return eigs.min(), eigs
+
+
+
+def fidelity_vs_site(
+    insert_idx,
+    input_ensemble,   # list of (s, theta) you use for fitting
+    N,
+    wormhole,
+    n_tube,
+    t_couple,
+    t0,
+    cutoff):    
+
+
+
+    Vins = []
+
+    Vouts = [[] for i in range(N)]
+
+
+    for s, theta in input_ensemble:
+        # Run your usual protocol (NO observer) to get global Gamma_final
+        _, Gamma_final,_,_ = teleportation_protocol(s,
+                                                    theta,
+                                                    insert_idx,
+                                                    wormhole,
+                                                    N,
+                                                    n_tube,
+                                                    t_couple,
+                                                    t0,
+                                                    cutoff)
+        
+            
+        Vins.append(make_input_covariance(s,theta))
+        for i in range(N):
+            Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i+N]))
+            #Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i]))
+        
+
+        # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
+
+    fid_symp = []
+    fid_flip = []
+
+
+    for i in range(N):
+        X, Y = fit_gaussian_channel(Vins, Vouts[i])
+        rot1,loss,squeeze,rot2 = decompose_X(X)
+        print(i+N)
+        print(f"rot1={rot1}")
+        print(f"rot2={rot2}")
+        print(f"loss={loss}")
+        print(f"squeeze={squeeze}")
+        print(f"Y={Y}")
+
+        S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
+        S_dec_flip = decoder_from_X_flip(X)  # your preferred
+
+        Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
+        Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
+
+        fid_symp.append(Fs)
+        fid_flip.append(Ff)
+
+        print(f"fid_flip_3={Ff}")
+        print(f"fid_symp_3={Fs}")
+
+    return fid_symp,fid_flip
+
+
+
+site_fidelities_symp=[]
+site_fidelities_flip=[]
+block_sizes = [1]
+#block_sizes = [1,2,4,6,8,10]
+# t0 =
 
 N = 64
+obs_idx = 2*N
+insert_idx = 10
+teleported_idx = insert_idx+N
+bdy_len = N
+
+Ss = np.linspace(-1, 1, 4)
+Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
+input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
+
+sites=np.arange(N,2*N)
+
+#for f in range(len(sites)):
+
+H_coupling_OG = H_coupling(N)
+
+Fs,Ff= fidelity_vs_site(
+    insert_idx=insert_idx,
+    input_ensemble=input_ensemble,   # list of (s, theta) you use for fitting
+    N=N,
+    wormhole=True,
+    n_tube=104,
+    t_couple=.794,
+    t0=2.12,
+    cutoff=400)
 """
-normlist = []
-tube_lengths = np.linspace(6,140,135)
+for f in range(len(sites)):
+    #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
+    #plt.plot(block_sizes,Fs,label=sites[f])
 
-for n in range(len(tube_lengths)):
-    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=.2,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=int(tube_lengths[n]),coupling=True,t_couple=.793,t0=2.3,cutoff=400)
-    #Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=.2,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=int(tube_lengths[n]),coupling=True,t_couple=100,t0=8,cutoff=1)
-    
-    mi_fin = mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N)))
-    norm = np.linalg.norm(Gamma_final_observer)
-    normlist.append(norm)
-    print(tube_lengths[n],norm,mi_fin)
-"""
-
-
-"""
-tube_lengths = np.linspace(1,120,115)
-
-Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=.2,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=100,coupling=True,t_couple=.793,t0=2.27)
-mi_fin = mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N)))
-
-
-
-tube_lengths = np.linspace(6,120,20)
-fin_mut_info = [] 
-mut_info_sides = []
-for n in range(len(tube_lengths)):
-    Gamma_final_observer, _, Gamma_forward_observer, _ = teleportation_protocol(s=.2,theta=0,insert_idx=32,wormhole=True,n_one_side=64,n_tube=int(tube_lengths[n]),coupling=True,t_couple=.79,t0=2,cutoff=400)
-    #fin_mut_info.append(mutual_information(Gamma_final_observer,[2*N],list(range(N,2*N))))
-    mut_info_sides.append(mutual_information(Gamma_final_observer,list(range(0,N),list(range(N,2*N)))))
-    #print(fin_mut_info[-1])
-
-#plt.plot(tube_lengths,fin_mut_info)
-plt.plot(tube_lengths,mut_info_sides)
-plt.xlabel("tube length")
+plt.xlabel("decoder block size")
+plt.ylabel("fidelity")
+plt.legend()
 plt.show()
-"""
+"""    
+
+plt.plot(sites,Fs,label="symplectic")
+plt.plot(sites,Ff,label="allow flip")
+plt.xlabel("site")
+plt.ylabel("fidelity")
+#plt.legend()
+plt.show()
 
 
-print("stop")
+
+
+print("done")
+
+
 

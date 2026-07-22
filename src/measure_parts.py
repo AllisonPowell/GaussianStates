@@ -459,15 +459,14 @@ def pad_Atot_for_probe(Gamma,meas_set,probe_site):
     Gamma_probe[probe_site,nb]=1
     return Gamma_probe
 
-def teleport(probe_site,n_tube,r,L):
+def teleport(probe_site,n_tube,r,L,Lh,mu_s,t):
     # Parameters
     #L = 11
     #L = 7
     #L = 9
-    Lh = 5
-    g_tube = 1
-    mu_s = 1
-    t = 10
+    #Lh = 5
+    g_tube = mu_s
+
 
     # Build the graph
     N = 2**(Lh - 1) * (2**(L - Lh + 1) - 1)
@@ -518,19 +517,26 @@ def teleport(probe_site,n_tube,r,L):
     #A_tot[94:98,:]=0
     #A_tot[:,94:98]=0
 
+    #A_tot[92:102,:]=0
+    #A_tot[:,92:102]=0
 
-    #A_tot[92:100,:]=0
-    #A_tot[:,92:100]=0
+    #A_tot[90:103,:]=0
+    #A_tot[:,90:103]=0
 
-    #A_tot[90:102,:]=0
-    #A_tot[:,90:102]=0
+    A_tot[69:112,:]=0
+    A_tot[:,69:112]=0
+
+    A_tot[48:61,:]=0
+    A_tot[:,48:61]=0    
 
     #A_tot[91:103,:]=0
     #A_tot[:,91:103]=0
 
+    #A_tot[70:110,:]=0
+    #A_tot[:,70:110]=0
 
-    #A_tot[86:106,:]=0
-    #A_tot[:,86:106]=0
+    #A_tot[87:106,:]=0
+    #A_tot[:,87:106]=0
 
     #A_tot[87:107,:]=0
     #A_tot[:,87:107]=0
@@ -707,10 +713,16 @@ with open('mi_fin_list.txt', 'w') as f:
     for item in mi_fin_list:
         f.write(f"{item}\n")
 """
+####
+#no hole
+###
+
 """
-probe_site = 12
+
+probe_site = 40
 n_tube = 1
-mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,n_tube,1,8)
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
 
 bdy_len = (Gamma_TFD.shape[0]-2)//4
 
@@ -758,7 +770,754 @@ for i in range(len(un_set)):
 plt.plot(range(len(un_set)),local_after_meas)
 plt.legend()
 plt.show()
+
+
+distance_groups_left_cw = [[] for _ in range(11)]
+distance_groups_left_ccw = [[] for _ in range(11)]
+distance_groups_right_cw = [[] for _ in range(9)]
+distance_groups_right_ccw = [[] for _ in range(9)]
+
+distances_left_cw = [3,4,5,6,7,8,9,10,11,12,13]
+distances_left_ccw = [3,4,5,6,7,8,9,10,11,12,13]
+distances_right_cw = [7,8,9,10,11,12,13,14,15]
+distances_right_ccw = [7,8,9,10,11,12,13,14,15]
+
+for i in range(8):
+    mi = mutual_information(Gamma_TFD,[0],[193+i])
+    distance_groups_left_cw[0].append(mi)
+    distance_groups_left_ccw[0].append(mi)
+
+
+for i in range(3):
+    print(i)
+    for j in range(8):
+        distance_groups_left_cw[i+1].append(mutual_information(Gamma_TFD,[0],[193+(i+1)*8+j]))
+        print(193+(i+1)*8+j+240)
+
+for i in range(2):
+    for j in range(16):
+        distance_groups_left_cw[i+4].append(mutual_information(Gamma_TFD,[0],[225+i*16+j]))
+
+
+for i in range(4):
+    for j in range(16):
+        distance_groups_left_cw[i+6].append(mutual_information(Gamma_TFD,[0],[1+i*16+j]))
+
+for i in range(4):
+    for j in range(8):
+        distance_groups_left_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[193-(i+1)*8+j]))
+
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_ccw[i+5].append(mutual_information(Gamma_TFD,[0],[161-i*16+j]))
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[65+j])
+    distance_groups_left_cw[10].append(mi)
+    distance_groups_left_ccw[10].append(mi)
+
+
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[450+j])
+    distance_groups_right_cw[0].append(mi)
+    distance_groups_right_ccw[0].append(mi)
+
+for i in range(3):
+    for j in range(16):
+        distance_groups_right_cw[i+1].append(mutual_information(Gamma_TFD,[0],[465+i*16+j]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_right_cw[i+4].append(mutual_information(Gamma_TFD,[0],[257+i*16+j]))
+
+for i in range(8):
+    for j in range(16):
+        distance_groups_right_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[449-i*16+j]))
+
+average_mi_left_cw = []
+average_mi_left_ccw = []
+average_mi_right_cw = []
+average_mi_right_ccw = []
+
+for i in range(11):
+    average_mi_left_cw.append(sum(distance_groups_left_cw[i])/len(distance_groups_left_cw[i]))
+for i in range(11):
+    average_mi_left_ccw.append(sum(distance_groups_left_ccw[i])/len(distance_groups_left_ccw[i]))
+for i in range(9):
+    average_mi_right_cw.append(sum(distance_groups_right_cw[i])/len(distance_groups_right_cw[i]))
+for i in range(9):
+    average_mi_right_ccw.append(sum(distance_groups_right_ccw[i])/len(distance_groups_right_ccw[i]))
+
+plt.plot(distances_left_cw,average_mi_left_cw,label ="left side cw")
+plt.plot(distances_left_ccw,average_mi_left_ccw,label ="left side ccw")
+plt.plot(distances_right_cw,average_mi_right_cw,label ="right side cw")
+plt.plot(distances_right_ccw,average_mi_right_ccw,label ="right side ccw")
+plt.xlabel("graph distance")
+plt.ylabel("mutual information with observer")
+plt.legend()
+plt.show()
+
 """
+
+
+####
+# hole 92-100
+###
+
+"""
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
+
+bdy_len = (Gamma_TFD.shape[0]-2)//4
+
+print("n_tube=",n_tube)
+print("probe_site=",probe_site)
+print(mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1))))
+
+left_side = []
+right_side = []
+
+for i in range(bdy_len):
+    left_side.append(mutual_information(Gamma_TFD,[0],[i+1]))
+    right_side.append(mutual_information(Gamma_TFD,[0],[i+bdy_len+1]))
+
+sites=np.arange(bdy_len)
+plt.plot(sites,left_side,label="left")
+plt.plot(sites,right_side,label="right")
+plt.legend()
+plt.show()
+
+
+Gamma_right = measure_left_side(Gamma_TFD,bdy_len)
+
+print(mutual_information(Gamma_right,[0],list(range(1,bdy_len+1))))
+right_after_meas = []
+for i in range(bdy_len):
+    right_after_meas.append(mutual_information(Gamma_right,[0],[i+1]))
+
+plt.plot(sites,right_after_meas,label="right after measurement")
+plt.legend()
+plt.show()
+
+
+n = (Gamma_right.shape[0])//2
+meas_set = list(range(1,57))+list(range(72,128))
+un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
+Gamma_local = measure_sites(Gamma_right,meas_set)
+
+
+local_after_meas = []
+for i in range(len(un_set)):
+    local_after_meas.append(mutual_information(Gamma_local,[0],[i+1]))
+
+plt.plot(range(len(un_set)),local_after_meas)
+plt.legend()
+plt.show()
+
+
+distance_groups_left_cw = [[] for _ in range(9)]
+distance_groups_left_ccw = [[] for _ in range(8)]
+distance_groups_right_cw = [[] for _ in range(9)]
+distance_groups_right_ccw = [[] for _ in range(9)]
+distance_groups_behind_right = [[] for _ in range(9)]
+distance_groups_behind_left = [[] for _ in range(9)]
+
+distances_left_cw = [5,6,7,8,9,10,11,12,13]
+distances_left_ccw = [6,7,8,9,10,11,12,13]
+distances_right_cw = [7,8,9,10,11,12,13,14,15]
+distances_right_ccw = [7,8,9,10,11,12,13,14,15]
+distances_behind_right = [6,7,8,9,10,11,12,13,14]
+distances_behind_left = [7,8,9,10,11,12,13,14,15]
+
+
+
+for i in range(4):  
+    distance_groups_left_cw[0].append(mutual_information(Gamma_TFD,[0],[213+i]))
+
+for i in range(8):
+    distance_groups_left_cw[1].append(mutual_information(Gamma_TFD,[0],[217+i]))
+
+for i in range(2):
+    for j in range(16):
+        distance_groups_left_cw[i+2].append(mutual_information(Gamma_TFD,[0],[225+i*16+j]))
+
+for i in range(4):
+    for j in range(16):
+        distance_groups_left_cw[i+4].append(mutual_information(Gamma_TFD,[0],[1+i*16+j]))
+
+for i in range(2):
+    for j in range(8):
+        distance_groups_left_ccw[i].append(mutual_information(Gamma_TFD,[0],[177-(i+1)*8+j]))
+
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_ccw[i+2].append(mutual_information(Gamma_TFD,[0],[161-i*16+j]))
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[65+j])
+    distance_groups_left_cw[8].append(mi)
+    distance_groups_left_ccw[7].append(mi)
+
+for i in range(9):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_right[i].append(mutual_information(Gamma_TFD,[0],[213-2*(i+1)+j]))
+        #print(213-2*(i+1)+j+240-1)
+
+for i in range(9):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_left[i].append(mutual_information(Gamma_TFD,[0],[177+2*i+j]))
+        #print(177+2*i+j+240-1)
+
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[450+j])
+    distance_groups_right_cw[0].append(mi)
+    distance_groups_right_ccw[0].append(mi)
+
+for i in range(3):
+    for j in range(16):
+        distance_groups_right_cw[i+1].append(mutual_information(Gamma_TFD,[0],[465+i*16+j]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_right_cw[i+4].append(mutual_information(Gamma_TFD,[0],[257+i*16+j]))
+
+for i in range(8):
+    for j in range(16):
+        distance_groups_right_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[449-i*16+j]))
+
+average_mi_left_cw = []
+average_mi_left_ccw = []
+average_mi_right_cw = []
+average_mi_right_ccw = []
+average_mi_behind_left = []
+average_mi_behind_right = []
+
+for i in range(9):
+    average_mi_left_cw.append(sum(distance_groups_left_cw[i])/len(distance_groups_left_cw[i]))
+for i in range(8):
+    average_mi_left_ccw.append(sum(distance_groups_left_ccw[i])/len(distance_groups_left_ccw[i]))
+for i in range(9):
+    average_mi_right_cw.append(sum(distance_groups_right_cw[i])/len(distance_groups_right_cw[i]))
+for i in range(9):
+    average_mi_right_ccw.append(sum(distance_groups_right_ccw[i])/len(distance_groups_right_ccw[i]))
+for i in range(9):
+    average_mi_behind_right.append(sum(distance_groups_behind_right[i])/len(distance_groups_behind_right[i]))
+for i in range(9):
+    average_mi_behind_left.append(sum(distance_groups_behind_left[i])/len(distance_groups_behind_left[i]))
+
+
+plt.plot(distances_left_cw,average_mi_left_cw,label ="left side cw")
+plt.plot(distances_left_ccw,average_mi_left_ccw,label ="left side ccw")
+plt.plot(distances_right_cw,average_mi_right_cw,label ="right side cw")
+plt.plot(distances_right_ccw,average_mi_right_ccw,label ="right side ccw")
+plt.plot(distances_behind_right,average_mi_behind_right,label ="behind hole to right")
+plt.plot(distances_behind_left,average_mi_behind_left,label ="behind hole to left")
+
+
+plt.xlabel("graph distance")
+plt.ylabel("mutual information with observer")
+plt.legend()
+plt.show()
+
+"""
+
+
+####
+# hole 92-101
+###
+
+"""
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
+
+bdy_len = (Gamma_TFD.shape[0]-2)//4
+
+print("n_tube=",n_tube)
+print("probe_site=",probe_site)
+print(mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1))))
+
+left_side = []
+right_side = []
+
+for i in range(bdy_len):
+    left_side.append(mutual_information(Gamma_TFD,[0],[i+1]))
+    right_side.append(mutual_information(Gamma_TFD,[0],[i+bdy_len+1]))
+
+sites=np.arange(bdy_len)
+plt.plot(sites,left_side,label="left")
+plt.plot(sites,right_side,label="right")
+plt.legend()
+plt.show()
+
+
+Gamma_right = measure_left_side(Gamma_TFD,bdy_len)
+
+print(mutual_information(Gamma_right,[0],list(range(1,bdy_len+1))))
+right_after_meas = []
+for i in range(bdy_len):
+    right_after_meas.append(mutual_information(Gamma_right,[0],[i+1]))
+
+plt.plot(sites,right_after_meas,label="right after measurement")
+plt.legend()
+plt.show()
+
+
+n = (Gamma_right.shape[0])//2
+meas_set = list(range(1,57))+list(range(72,128))
+un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
+Gamma_local = measure_sites(Gamma_right,meas_set)
+
+
+local_after_meas = []
+for i in range(len(un_set)):
+    local_after_meas.append(mutual_information(Gamma_local,[0],[i+1]))
+
+plt.plot(range(len(un_set)),local_after_meas)
+plt.legend()
+plt.show()
+
+
+distance_groups_left_cw = [[] for _ in range(8)]
+distance_groups_left_ccw = [[] for _ in range(8)]
+distance_groups_right_cw = [[] for _ in range(9)]
+distance_groups_right_ccw = [[] for _ in range(9)]
+distance_groups_behind_right = [[] for _ in range(10)]
+distance_groups_behind_left = [[] for _ in range(10)]
+
+distances_left_cw = [6,7,8,9,10,11,12,13]
+distances_left_ccw = [6,7,8,9,10,11,12,13]
+distances_right_cw = [7,8,9,10,11,12,13,14,15]
+distances_right_ccw = [7,8,9,10,11,12,13,14,15]
+distances_behind_right = [7,8,9,10,11,12,13,14,15,16]
+distances_behind_left = [7,8,9,10,11,12,13,14,15,16]
+
+
+
+for i in range(8):
+    distance_groups_left_cw[0].append(mutual_information(Gamma_TFD,[0],[217+i]))
+
+for i in range(2):
+    for j in range(16):
+        distance_groups_left_cw[i+1].append(mutual_information(Gamma_TFD,[0],[225+i*16+j]))
+
+for i in range(4):
+    for j in range(16):
+        distance_groups_left_cw[i+3].append(mutual_information(Gamma_TFD,[0],[1+i*16+j]))
+
+for i in range(2):
+    for j in range(8):
+        distance_groups_left_ccw[i].append(mutual_information(Gamma_TFD,[0],[177-(i+1)*8+j]))
+
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_ccw[i+2].append(mutual_information(Gamma_TFD,[0],[161-i*16+j]))
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[65+j])
+    distance_groups_left_cw[7].append(mi)
+    distance_groups_left_ccw[7].append(mi)
+
+for i in range(10):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_right[i].append(mutual_information(Gamma_TFD,[0],[217-2*(i+1)+j]))
+        #print(213-2*(i+1)+j+240-1)
+
+for i in range(10):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_left[i].append(mutual_information(Gamma_TFD,[0],[177+2*i+j]))
+        #print(177+2*i+j+240-1)
+
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[450+j])
+    distance_groups_right_cw[0].append(mi)
+    distance_groups_right_ccw[0].append(mi)
+
+for i in range(3):
+    for j in range(16):
+        distance_groups_right_cw[i+1].append(mutual_information(Gamma_TFD,[0],[465+i*16+j]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_right_cw[i+4].append(mutual_information(Gamma_TFD,[0],[257+i*16+j]))
+
+for i in range(8):
+    for j in range(16):
+        distance_groups_right_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[449-i*16+j]))
+
+average_mi_left_cw = []
+average_mi_left_ccw = []
+average_mi_right_cw = []
+average_mi_right_ccw = []
+average_mi_behind_left = []
+average_mi_behind_right = []
+
+for i in range(8):
+    average_mi_left_cw.append(sum(distance_groups_left_cw[i])/len(distance_groups_left_cw[i]))
+for i in range(8):
+    average_mi_left_ccw.append(sum(distance_groups_left_ccw[i])/len(distance_groups_left_ccw[i]))
+for i in range(9):
+    average_mi_right_cw.append(sum(distance_groups_right_cw[i])/len(distance_groups_right_cw[i]))
+for i in range(9):
+    average_mi_right_ccw.append(sum(distance_groups_right_ccw[i])/len(distance_groups_right_ccw[i]))
+for i in range(10):
+    average_mi_behind_right.append(sum(distance_groups_behind_right[i])/len(distance_groups_behind_right[i]))
+for i in range(10):
+    average_mi_behind_left.append(sum(distance_groups_behind_left[i])/len(distance_groups_behind_left[i]))
+
+
+plt.plot(distances_left_cw,average_mi_left_cw,label ="left side cw")
+plt.plot(distances_left_ccw,average_mi_left_ccw,label ="left side ccw")
+plt.plot(distances_right_cw,average_mi_right_cw,label ="right side cw")
+plt.plot(distances_right_ccw,average_mi_right_ccw,label ="right side ccw")
+plt.plot(distances_behind_right,average_mi_behind_right,label ="behind hole to right")
+plt.plot(distances_behind_left,average_mi_behind_left,label ="behind hole to left")
+
+
+plt.xlabel("graph distance")
+plt.ylabel("mutual information with observer")
+plt.legend()
+plt.show()
+
+"""
+
+####
+# hole 86-106
+###
+
+"""
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
+
+bdy_len = (Gamma_TFD.shape[0]-2)//4
+
+print("n_tube=",n_tube)
+print("probe_site=",probe_site)
+print(mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1))))
+
+left_side = []
+right_side = []
+
+for i in range(bdy_len):
+    left_side.append(mutual_information(Gamma_TFD,[0],[i+1]))
+    right_side.append(mutual_information(Gamma_TFD,[0],[i+bdy_len+1]))
+
+sites=np.arange(bdy_len)
+plt.plot(sites,left_side,label="left")
+plt.plot(sites,right_side,label="right")
+plt.legend()
+plt.show()
+
+
+Gamma_right = measure_left_side(Gamma_TFD,bdy_len)
+
+print(mutual_information(Gamma_right,[0],list(range(1,bdy_len+1))))
+right_after_meas = []
+for i in range(bdy_len):
+    right_after_meas.append(mutual_information(Gamma_right,[0],[i+1]))
+
+plt.plot(sites,right_after_meas,label="right after measurement")
+plt.legend()
+plt.show()
+
+
+n = (Gamma_right.shape[0])//2
+meas_set = list(range(1,57))+list(range(72,128))
+un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
+Gamma_local = measure_sites(Gamma_right,meas_set)
+
+
+local_after_meas = []
+for i in range(len(un_set)):
+    local_after_meas.append(mutual_information(Gamma_local,[0],[i+1]))
+
+plt.plot(range(len(un_set)),local_after_meas)
+plt.legend()
+plt.show()
+
+
+distance_groups_left_cw = [[] for _ in range(7)]
+distance_groups_left_ccw = [[] for _ in range(6)]
+distance_groups_right_cw = [[] for _ in range(9)]
+distance_groups_right_ccw = [[] for _ in range(9)]
+distance_groups_behind_right = [[] for _ in range(20)]
+distance_groups_behind_left = [[] for _ in range(22)]
+
+distances_left_cw = [7,8,9,10,11,12,13]
+distances_left_ccw = [8,9,10,11,12,13]
+distances_right_cw = [7,8,9,10,11,12,13,14,15]
+distances_right_ccw = [7,8,9,10,11,12,13,14,15]
+distances_behind_right = list(range(8,28))
+distances_behind_left = list(range(9,31))
+
+
+
+
+for i in range(4):  
+    distance_groups_left_cw[0].append(mutual_information(Gamma_TFD,[0],[237+i]))
+
+for i in range(16):
+    distance_groups_left_cw[1].append(mutual_information(Gamma_TFD,[0],[241+i]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_cw[i+2].append(mutual_information(Gamma_TFD,[0],[225+i*16+j]))
+
+
+
+for j in range(8):
+    distance_groups_left_ccw[0].append(mutual_information(Gamma_TFD,[0],[145+i]))
+
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[145-i*16+j]))
+
+
+for i in range(20):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_right[i].append(mutual_information(Gamma_TFD,[0],[237-2*(i+1)+j]))
+        #print(213-2*(i+1)+j+240-1)
+
+for i in range(22):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_left[i].append(mutual_information(Gamma_TFD,[0],[153+2*i+j]))
+        #print(177+2*i+j+240-1)
+
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[450+j])
+    distance_groups_right_cw[0].append(mi)
+    distance_groups_right_ccw[0].append(mi)
+
+for i in range(3):
+    for j in range(16):
+        distance_groups_right_cw[i+1].append(mutual_information(Gamma_TFD,[0],[465+i*16+j]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_right_cw[i+4].append(mutual_information(Gamma_TFD,[0],[257+i*16+j]))
+
+for i in range(8):
+    for j in range(16):
+        distance_groups_right_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[449-i*16+j]))
+
+average_mi_left_cw = []
+average_mi_left_ccw = []
+average_mi_right_cw = []
+average_mi_right_ccw = []
+average_mi_behind_left = []
+average_mi_behind_right = []
+
+for i in range(7):
+    average_mi_left_cw.append(sum(distance_groups_left_cw[i])/len(distance_groups_left_cw[i]))
+for i in range(6):
+    average_mi_left_ccw.append(sum(distance_groups_left_ccw[i])/len(distance_groups_left_ccw[i]))
+for i in range(9):
+    average_mi_right_cw.append(sum(distance_groups_right_cw[i])/len(distance_groups_right_cw[i]))
+for i in range(9):
+    average_mi_right_ccw.append(sum(distance_groups_right_ccw[i])/len(distance_groups_right_ccw[i]))
+for i in range(20):
+    average_mi_behind_right.append(sum(distance_groups_behind_right[i])/len(distance_groups_behind_right[i]))
+for i in range(22):
+    average_mi_behind_left.append(sum(distance_groups_behind_left[i])/len(distance_groups_behind_left[i]))
+
+
+plt.plot(distances_left_cw,average_mi_left_cw,label ="left side cw")
+plt.plot(distances_left_ccw,average_mi_left_ccw,label ="left side ccw")
+plt.plot(distances_right_cw,average_mi_right_cw,label ="right side cw")
+plt.plot(distances_right_ccw,average_mi_right_ccw,label ="right side ccw")
+plt.plot(distances_behind_right,average_mi_behind_right,label ="behind hole to right")
+plt.plot(distances_behind_left,average_mi_behind_left,label ="behind hole to left")
+
+
+plt.xlabel("graph distance")
+plt.ylabel("mutual information with observer")
+plt.legend()
+plt.show()
+
+"""
+
+####
+# hole 85-108
+###
+"""
+
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
+
+bdy_len = (Gamma_TFD.shape[0]-2)//4
+
+print("n_tube=",n_tube)
+print("probe_site=",probe_site)
+print(mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1))))
+print(mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1))))
+
+left_side = []
+right_side = []
+
+for i in range(bdy_len):
+    left_side.append(mutual_information(Gamma_TFD,[0],[i+1]))
+    right_side.append(mutual_information(Gamma_TFD,[0],[i+bdy_len+1]))
+
+sites=np.arange(bdy_len)
+plt.plot(sites,left_side,label="left")
+plt.plot(sites,right_side,label="right")
+plt.legend()
+plt.show()
+
+
+Gamma_right = measure_left_side(Gamma_TFD,bdy_len)
+
+print(mutual_information(Gamma_right,[0],list(range(1,bdy_len+1))))
+right_after_meas = []
+for i in range(bdy_len):
+    right_after_meas.append(mutual_information(Gamma_right,[0],[i+1]))
+
+plt.plot(sites,right_after_meas,label="right after measurement")
+plt.legend()
+plt.show()
+
+
+n = (Gamma_right.shape[0])//2
+meas_set = list(range(1,57))+list(range(72,128))
+un_set = list(np.setdiff1d(np.arange(1,n),meas_set))
+Gamma_local = measure_sites(Gamma_right,meas_set)
+
+
+local_after_meas = []
+for i in range(len(un_set)):
+    local_after_meas.append(mutual_information(Gamma_local,[0],[i+1]))
+
+plt.plot(range(len(un_set)),local_after_meas)
+plt.legend()
+plt.show()
+
+
+distance_groups_left_cw = [[] for _ in range(6)]
+distance_groups_left_ccw = [[] for _ in range(6)]
+distance_groups_right_cw = [[] for _ in range(9)]
+distance_groups_right_ccw = [[] for _ in range(9)]
+distance_groups_behind_right = [[] for _ in range(24)]
+distance_groups_behind_left = [[] for _ in range(24)]
+
+distances_left_cw = [8,9,10,11,12,13]
+distances_left_ccw = [8,9,10,11,12,13]
+distances_right_cw = [7,8,9,10,11,12,13,14,15]
+distances_right_ccw = [7,8,9,10,11,12,13,14,15]
+distances_behind_right = list(range(9,33))
+distances_behind_left = list(range(9,33))
+
+
+
+
+for i in range(12):  
+    distance_groups_left_cw[0].append(mutual_information(Gamma_TFD,[0],[245+i]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_cw[i+1].append(mutual_information(Gamma_TFD,[0],[1+i*16+j]))
+
+
+
+for i in range(4):
+    distance_groups_left_ccw[0].append(mutual_information(Gamma_TFD,[0],[145+i]))
+
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_left_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[145-i*16+j]))
+
+
+for i in range(24):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_right[i].append(mutual_information(Gamma_TFD,[0],[245-2*(i+1)+j]))
+        #print(213-2*(i+1)+j+240-1)
+
+for i in range(24):
+    print(i)
+    for j in range(2):
+        distance_groups_behind_left[i].append(mutual_information(Gamma_TFD,[0],[149+2*i+j]))
+        #print(177+2*i+j+240-1)
+
+
+for i in range(16):
+    mi = mutual_information(Gamma_TFD,[0],[450+j])
+    distance_groups_right_cw[0].append(mi)
+    distance_groups_right_ccw[0].append(mi)
+
+for i in range(3):
+    for j in range(16):
+        distance_groups_right_cw[i+1].append(mutual_information(Gamma_TFD,[0],[465+i*16+j]))
+
+for i in range(5):
+    for j in range(16):
+        distance_groups_right_cw[i+4].append(mutual_information(Gamma_TFD,[0],[257+i*16+j]))
+
+for i in range(8):
+    for j in range(16):
+        distance_groups_right_ccw[i+1].append(mutual_information(Gamma_TFD,[0],[449-i*16+j]))
+
+average_mi_left_cw = []
+average_mi_left_ccw = []
+average_mi_right_cw = []
+average_mi_right_ccw = []
+average_mi_behind_left = []
+average_mi_behind_right = []
+
+for i in range(6):
+    average_mi_left_cw.append(sum(distance_groups_left_cw[i])/len(distance_groups_left_cw[i]))
+for i in range(6):
+    average_mi_left_ccw.append(sum(distance_groups_left_ccw[i])/len(distance_groups_left_ccw[i]))
+for i in range(9):
+    average_mi_right_cw.append(sum(distance_groups_right_cw[i])/len(distance_groups_right_cw[i]))
+for i in range(9):
+    average_mi_right_ccw.append(sum(distance_groups_right_ccw[i])/len(distance_groups_right_ccw[i]))
+for i in range(24):
+    average_mi_behind_right.append(sum(distance_groups_behind_right[i])/len(distance_groups_behind_right[i]))
+for i in range(24):
+    average_mi_behind_left.append(sum(distance_groups_behind_left[i])/len(distance_groups_behind_left[i]))
+
+
+plt.plot(distances_left_cw,average_mi_left_cw,label ="left side cw")
+plt.plot(distances_left_ccw,average_mi_left_ccw,label ="left side ccw")
+plt.plot(distances_right_cw,average_mi_right_cw,label ="right side cw")
+plt.plot(distances_right_ccw,average_mi_right_ccw,label ="right side ccw")
+plt.plot(distances_behind_right,average_mi_behind_right,label ="behind hole to right")
+plt.plot(distances_behind_left,average_mi_behind_left,label ="behind hole to left")
+
+
+plt.xlabel("graph distance")
+plt.ylabel("mutual information with observer")
+plt.legend()
+plt.show()
+"""
+
+
+
 """
 probe_site = 8
 tube_lengths = np.linspace(0,400,120)
@@ -794,19 +1553,20 @@ with open(fin_path, 'w') as f:
         f.write(row_str + "\n")
 """
 
-bdy_sizes = [7,8,9,10]
+"""
+bdy_sizes = [6,7,8,9]
 
 
-probe_site = 32
-tube_lengths = np.linspace(0,400,120)
-#tube_lengths = np.linspace(0,20,11)
+probe_site = 8
+#tube_lengths = np.linspace(0,400,120)
+tube_lengths = np.linspace(0,120,31)
 
 left_right_mi = [[] for _ in range(len(bdy_sizes))]
 mi_fin_list = [[] for _ in range(len(bdy_sizes))]
 
 for bdy in range(len(bdy_sizes)):
     for n in range(len(tube_lengths)):
-        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,bdy_sizes[bdy])
+        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,bdy_sizes[bdy],1,10)
         bdy_len = (Gamma_TFD.shape[0]-2)//4
         #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
         left_right_mi[bdy].append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
@@ -825,6 +1585,141 @@ rows_fin = zip(list(tube_lengths),*mi_fin_list)
 with open(f'{PROJ_DIR}/data/mi_fin.csv', 'w', newline='') as f:
     writer = csv.writer(f)
     writer.writerows(rows_fin)
+"""
+
+"""
+spring_constants = [.5,1,2,3]
+
+
+probe_site = 8
+#tube_lengths = np.linspace(0,400,120)
+tube_lengths = np.linspace(0,120,31)
+
+left_right_mi = [[] for _ in range(len(spring_constants))]
+mi_fin_list = [[] for _ in range(len(spring_constants))]
+
+for k in range(len(spring_constants)):
+    for n in range(len(tube_lengths)):
+        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,7,5,spring_constants[k],10)
+        bdy_len = (Gamma_TFD.shape[0]-2)//4
+        #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
+        left_right_mi[k].append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
+        mi_fin_list[k].append(mi_fin)
+
+
+
+rows_left_right_spring = zip(list(tube_lengths),*left_right_mi)
+
+with open(f'{PROJ_DIR}/data/left_right_mi_spring.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_left_right_spring)
+
+rows_fin_spring = zip(list(tube_lengths),*mi_fin_list)
+
+with open(f'{PROJ_DIR}/data/mi_fin_spring.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_fin_spring)
+"""
+
+
+"""
+times = [8,10,12,15]
+
+
+probe_site = 8
+#tube_lengths = np.linspace(0,400,120)
+tube_lengths = np.linspace(0,120,31)
+
+left_right_mi = [[] for _ in range(len(times))]
+mi_fin_list = [[] for _ in range(len(times))]
+
+for t in range(len(times)):
+    for n in range(len(tube_lengths)):
+        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,7,5,1,times[t])
+        bdy_len = (Gamma_TFD.shape[0]-2)//4
+        #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
+        left_right_mi[t].append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
+        mi_fin_list[t].append(mi_fin)
+
+
+
+rows_left_right_time = zip(list(tube_lengths),*left_right_mi)
+
+with open(f'{PROJ_DIR}/data/left_right_mi_time.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_left_right_time)
+
+rows_fin_time = zip(list(tube_lengths),*mi_fin_list)
+
+with open(f'{PROJ_DIR}/data/mi_fin_time.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_fin_time)
+"""
+
+
+"""
+widths = [3,4,5,6]
+
+
+#tube_lengths = np.linspace(0,400,120)
+tube_lengths = np.linspace(0,120,31)
+
+left_right_mi = [[] for _ in range(len(widths))]
+mi_fin_list = [[] for _ in range(len(widths))]
+
+for w in range(len(widths)):
+    if widths[w] == 3:
+        probe_site = 52
+    if widths[w] == 4:
+        probe_site = 48
+    if widths[w] == 5:
+        probe_site = 32
+    if widths[w] == 6:
+        probe_site = 16
+    for n in range(len(tube_lengths)):
+        mi_fin, mi_left, mi_right, Gamma_TFD = teleport(probe_site,int(tube_lengths[n]),1,7,widths[w],1,10)
+        bdy_len = (Gamma_TFD.shape[0]-2)//4
+        #left_right_mi.append(mutual_information(Gamma_TFD,list(range(57,72)),list(range(57+bdy_len,72+bdy_len))))
+        left_right_mi[w].append(mutual_information(Gamma_TFD,list(range(1,bdy_len+1)),list(range(1+bdy_len,bdy_len+1+bdy_len))))
+        mi_fin_list[w].append(mi_fin)
+
+
+
+rows_left_right_width = zip(list(tube_lengths),*left_right_mi)
+
+with open(f'{PROJ_DIR}/data/left_right_mi_width.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_left_right_width)
+
+rows_fin_width = zip(list(tube_lengths),*mi_fin_list)
+
+with open(f'{PROJ_DIR}/data/mi_fin_width.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows_fin_width)
+"""
+
+
+probe_site = 40
+n_tube = 1
+mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=10)
+
+times = np.linspace(5,100,20)
+ratio_list = []
+for t in times:
+    mi_fin, mi_left, mi_right, Gamma_TFD=teleport(probe_site,n_tube,r=1,L=9,Lh=5,mu_s=1,t=t)
+    bdy_len = (Gamma_TFD.shape[0]-2)//4
+    left = mutual_information(Gamma_TFD,[0],list(range(1,bdy_len+1)))
+    right = mutual_information(Gamma_TFD,[0],list(range(bdy_len+1,2*bdy_len+1)))
+    ratio_list.append(right/left)
+    print(right)
+    print(left)
+
+plt.plot(times,ratio_list)
+plt.xlabel("quench time")
+plt.ylabel("right/left mutual information")
+plt.show()
+
+
 
 
 

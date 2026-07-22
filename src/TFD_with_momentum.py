@@ -880,12 +880,12 @@ def build_filtered_traversable_coupling(
 # Parameters
 L = 7
 Lh = 5
-n_tube = 6
+n_tube = 15
 g_tube = 1
 mu_A = 1
 mu_B = 1
 mu_s = 1
-t = 10
+t = 22
 
 # Build the graph
 N = 2**(Lh - 1) * (2**(L - Lh + 1) - 1)
@@ -980,7 +980,7 @@ print(Gamma_1)
 n = N_tot
 
 # Default: mass = 1, so kinetic term is identity
-M = 3* np.eye(n)
+M = 3 * np.eye(n)
 D = np.zeros((n,n))
 for i in range(n):
     D[i,i]=sum(A_tot[i,:])
@@ -1123,8 +1123,7 @@ coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
 #plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
 
 
-t0 = 3.8
-
+t0 = 6
 Gamma_left = left_side(Gamma_TFD)
 
 
@@ -1278,6 +1277,7 @@ Gamma_LR = Gamma_TFD
 times_back=np.linspace(0,t0,T)
 S_back_dt = expm(-1 * Omega @ HL_full * dt)
 
+
 for t in times_back:
     I = mutual_information(Gamma_LR, idx_L=list(range(n_L)), idx_R=list(range(n_L, n)))
     I_mut.append(I)
@@ -1409,6 +1409,8 @@ carrier_indices1 = np.arange(0,insert_idx)
 carrier_indices2 = np.arange(insert_idx+1,bdy_len)
 carrier_indices = np.concatenate((carrier_indices1,carrier_indices2))
 
+#carrier_indices = np.array([0,5,10,15,20,25,30,35,40,45,50,55,60])
+
 """
 H_int = build_covariance_whitened_coupling(
     Gamma_LR_no_insert,
@@ -1480,7 +1482,7 @@ H_padded = pad_matrix_for_observer(H_int)
 
 
 
-t_couple = 400
+t_couple = 100
 #t_couple=33
 dt_couple = t_couple/T
 S_coupling = expm(Omega_padded @ H_padded * t_couple)
@@ -1652,7 +1654,7 @@ full_lengths_array = 2 * lengths_array + 1
 full_lengths_array[-1] = 64    
 plt.plot(full_lengths_array,mut_info_insert_regions,color='k',label = "insert side")
 plt.plot(full_lengths_array,mut_info_telep_regions,color='red', label ="teleport side")
-plt.axhline(compute_MI_with_observer(Gamma_LR,observer_idx,list(range(n_total))), color = "blue", label = "total mutual info with observer")
+plt.axhline(compute_MI_with_observer(Gamma_LR,observer_idx,list(range(n_total-1))), color = "blue", label = "total mutual info with observer")
 plt.xlabel("length of segment")
 plt.ylabel("mutual info with observer")
 plt.title("mutual information of segments centered around teleported site")

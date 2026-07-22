@@ -1879,11 +1879,13 @@ for lam in lambda_vals:
     lam_fid_flip.append(Ff[insert_idx])
 
 #plt.plot(lambda_vals,lam_fid_symp)
-plt.plot(lambda_vals,lam_fid_flip,'.')
+plt.rc('font', size=14)
+plt.plot(lambda_vals,lam_fid_flip,'.',color="black",linewidth=2)
 plt.xlabel("added non-gaussianity")
 plt.ylabel("fidelity")
-plt.savefig("plots/fidelity_vs_lam.pdf")
-#plt.show()
+plt.title("Fidelity vs Non-gaussianity")
+#plt.savefig("plots/fidelity_vs_lam.pdf")
+plt.show()
 
 
 """

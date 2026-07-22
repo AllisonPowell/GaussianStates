@@ -1002,6 +1002,8 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
     return scores
 
 
+def squeezing(v):
+    return -.5*np.log(v)
 
 
 ########
@@ -1010,10 +1012,10 @@ def signal_map_from_covariance(Gamma, idx_obs, n_total, exclude_obs=True):
 
 
 
-N = 128
+N = 20
 k = 5
 
-m_squared = 16
+m_squared = 13
 m2 = m_squared
 
  
@@ -1082,7 +1084,7 @@ S_tot = von_neumann_entropy_alt(Gamma_TFD)
 # investigate spreading
 ###########
 
-t0 = 31
+t0 = 3.6
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
@@ -1136,6 +1138,8 @@ I_mut = []
 
 Gamma_LR = Gamma_TFD
 times_back=np.linspace(0,t0,T)
+
+
 
 for t in times_back:
     S_back_dt = expm(-1 * Omega @ HL_full * dt)
@@ -1341,6 +1345,8 @@ Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
 S_couple_no_insert = expm(Omega @ H * dt_couple)
 
 
+
+
 times_obs_coupling = np.linspace(t0,t0+t_couple,T)
 for s,t in enumerate(times_obs_coupling):
     S_couple_dt = expm(1 * Omega_padded @ H_padded * dt_couple)
@@ -1434,12 +1440,13 @@ final_mut_info= []
 for i in range(Gamma_TFD.shape[0]//2):
     final_mut_info.append(compute_MI_with_observer(Gamma_LR, observer_idx, [i]))
 
-plt.plot(np.arange(Gamma_TFD.shape[0]//2),final_mut_info,color='k')
-plt.axvline(insert_idx,color="blue",linestyle="dashed")
-plt.axvline(teleport_idx,color="red",linestyle="dashed")
+plt.rc('font', size=14)
+plt.plot(np.arange(Gamma_TFD.shape[0]//2),final_mut_info,color='k',linewidth=2)
+plt.axvline(insert_idx,color="blue",linestyle="dashed",linewidth=2,label = "insert site")
+plt.axvline(teleport_idx,color="red",linestyle="dashed",linewidth=2,label="teleport site")
 plt.xlabel("site")
-plt.ylabel("mutual info with observer")
-plt.title("mutual information with observer after coupling")
+plt.ylabel("mutual information with observer")
+plt.title("Sitewise Mutual Information")
 plt.legend()
 plt.show()
 
@@ -1553,13 +1560,13 @@ mut_info_telep_regions.append(compute_MI_with_observer(Gamma_LR, observer_idx, l
 full_lengths_array = 2 * lengths_array + 1
 full_lengths_array[-1] = N // 2
 
-#plt.rc('font', size=28) 
+plt.rc('font', size=14) 
 #linewidth=4
-plt.plot(full_lengths_array,mut_info_insert_regions,color='k',label = "insert side")
-plt.plot(full_lengths_array,mut_info_telep_regions,color='red', label ="teleport side")
+plt.plot(full_lengths_array,mut_info_insert_regions,color='k',linewidth=2,label = "insert side")
+plt.plot(full_lengths_array,mut_info_telep_regions,color='red',linewidth=2, label ="teleport side")
 plt.axhline(compute_MI_with_observer(Gamma_LR,observer_idx,list(range(n_total))),color = "blue", label = "total mutual info with observer")
 plt.xlabel("length of segment")
-plt.ylabel("mutual info with observer")
+plt.ylabel("mutual information with observer")
 plt.title("Mutual Information of Segments")
 plt.legend()
 plt.show()

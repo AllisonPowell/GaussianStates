@@ -841,7 +841,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        t0 = 1.4
+        t0 = 3.6
 
 
     else:
@@ -3060,7 +3060,7 @@ def fidelity_vs_site(
 
     Vins = []
 
-    Vouts = [[] for i in range(N)]
+    Vouts = [[] for i in range(2*N)]
 
 
     for s, theta in input_ensemble:
@@ -3070,8 +3070,8 @@ def fidelity_vs_site(
             )        
             
         Vins.append(make_input_covariance(s,theta))
-        for i in range(N):
-            Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i+N]))
+        for i in range(2*N):
+            Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i]))
             #Vouts[i].append(extract_subsystem_covariance(Gamma_final,[i]))
         
 
@@ -3081,10 +3081,10 @@ def fidelity_vs_site(
     fid_flip = []
 
 
-    for i in range(N):
+    for i in range(2*N):
         X, Y = fit_gaussian_channel(Vins, Vouts[i])
         rot1,loss,squeeze,rot2 = decompose_X(X)
-        print(i+N)
+        print(i)
         print(f"rot1={rot1}")
         print(f"rot2={rot2}")
         print(f"loss={loss}")
@@ -3113,7 +3113,7 @@ block_sizes = [1]
 #block_sizes = [1,2,4,6,8,10]
 # t0 =
 
-N = 4
+N = 10
 obs_idx = 2*N
 insert_idx = 1
 teleported_idx = insert_idx+N
@@ -3123,7 +3123,7 @@ Ss = np.linspace(-1, 1, 4)
 Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
-sites=np.arange(N,2*N)
+sites=np.arange(0,2*N)
 
 #for f in range(len(sites)):
 
@@ -3141,11 +3141,16 @@ plt.legend()
 plt.show()
 """    
 
+
 #plt.plot(sites,Fs,label="symplectic")
-plt.plot(sites,Ff,label="allow flip")
+plt.rc('font', size=14)
+plt.plot(sites,Ff,color="k",linewidth=2)
+plt.axvline(insert_idx,color="blue",linestyle="dashed",linewidth=2,label="insert site")
+plt.axvline(teleported_idx,color="red",linestyle="dashed",linewidth=2,label="teleport site")
 plt.xlabel("site")
 plt.ylabel("fidelity")
-#plt.legend()
+plt.title("Channel Fidelity")
+plt.legend()
 plt.show()
 
 
