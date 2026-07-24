@@ -46,4 +46,11 @@ plt.xlabel("hole size")
 plt.ylabel("mutual information")
 plt.show()
 
+
+
+df_quench = pd.read_csv(f'{PROJ_DIR}/data/vary_quench_time_n_tube_15.csv', usecols=[0, 4],header=None)
+
+
+
+
 print("stop")
