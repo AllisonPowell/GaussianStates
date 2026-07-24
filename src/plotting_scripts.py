@@ -49,8 +49,12 @@ plt.show()
 
 
 df_quench = pd.read_csv(f'{PROJ_DIR}/data/vary_quench_time_n_tube_15.csv', usecols=[0, 4],header=None)
+quench_times = df_quench[0]
+mutual_info = df_quench[1]
 
-
+plt.plot(quench_times,mutual_info)
+plt.xlabel("quench time")
+plt.ylabel("mutual information")
 
 
 print("stop")
