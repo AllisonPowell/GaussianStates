@@ -778,7 +778,7 @@ def H_coupling(N):
     return H_coupling_OG
 
 
-def generate_interacting_tfd(n, omega_0, J, beta):
+def generate_interacting_tfd(n, omega_0, J, beta,periodic):
     """
     Generates the coupled modular Hamiltonian and covariance matrix
     for a continuous-variable tight-binding chain.
@@ -788,6 +788,9 @@ def generate_interacting_tfd(n, omega_0, J, beta):
     for i in range(n - 1):
         h[i, i+1] = -J
         h[i+1, i] = -J
+    if periodic==True:
+        h[0,n-1] = -J
+        h[n-1,0] = -J
 
     # 2. Diagonalize to find collective normal modes
     eigenvalues, V = np.linalg.eigh(h)
@@ -863,8 +866,8 @@ def make_boundary_coupling(n, insert_idx, g):
 
     return G
 
-def teleportation_protocol(s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve,t_couple):
-    Gamma_TFD, HL = generate_interacting_tfd(n, omega_0, J, beta)
+def teleportation_protocol(s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve,t_couple,periodic):
+    Gamma_TFD, HL = generate_interacting_tfd(n, omega_0, J, beta,periodic)
 
     HL_full = np.zeros((4*n, 4*n))
     HL_full[np.ix_(range(n), range(n))] = HL[:n, :n]                     # x-x
@@ -1650,7 +1653,8 @@ def fidelity_vs_site(
     t_couple,
     omega_0,
     J,
-    beta):
+    beta,
+    periodic):
 
 
     Vins = []
@@ -1661,7 +1665,7 @@ def fidelity_vs_site(
     for s, theta in input_ensemble:
         # Run your usual protocol (NO observer) to get global Gamma_final
         Gamma_final_obs_1, Gamma_final, Gamma_forward_obs_1,Gamma_forward = teleportation_protocol(
-                s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve,t_couple
+                s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve,t_couple,periodic
             )        
             
         Vins.append(make_input_covariance(s,theta))
@@ -1679,12 +1683,12 @@ def fidelity_vs_site(
     for i in range(2*n):
         X, Y = fit_gaussian_channel(Vins, Vouts[i])
         rot1,loss,squeeze,rot2 = decompose_X(X)
-        print(i)
-        print(f"rot1={rot1}")
-        print(f"rot2={rot2}")
-        print(f"loss={loss}")
-        print(f"squeeze={squeeze}")
-        print(f"Y={Y}")
+        #print(i)
+        #print(f"rot1={rot1}")
+        #print(f"rot2={rot2}")
+        #print(f"loss={loss}")
+        #print(f"squeeze={squeeze}")
+        #print(f"Y={Y}")
 
         S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
         S_dec_flip = decoder_from_X_flip(X)  # your preferred
@@ -1695,26 +1699,20 @@ def fidelity_vs_site(
         fid_symp.append(Fs)
         fid_flip.append(Ff)
 
-        print(f"fid_flip_3={Ff}")
-        print(f"fid_symp_3={Fs}")
+        #print(f"fid_flip_3={Ff}")
+        #print(f"fid_symp_3={Fs}")
 
     return fid_symp,fid_flip
 
 
-
-site_fidelities_symp=[]
-site_fidelities_flip=[]
-block_sizes = [1]
-#block_sizes = [1,2,4,6,8,10]
-# t0 =
-
-n = 15
+n = 10
 omega_0 = 1
-J = .6
+J = .4
 beta = 1
-insert_idx = 4
-t_couple = 5
-t_evolve = 24
+insert_idx = 1
+t_evolve = 4.9
+t_couple = 1.6
+
 
 Ss = np.linspace(-1, 1, 4)
 Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
@@ -1735,7 +1733,8 @@ Fs,Ff= fidelity_vs_site(
     t_couple,
     omega_0,
     J,
-    beta)
+    beta,
+    periodic=True)
 
 
 
@@ -1750,7 +1749,24 @@ plt.title("Channel Fidelity")
 plt.legend()
 plt.show()
 
-
+"""
+t_evolve_list = np.linspace(1,20,140)
+fidelity_list = []
+for t in range(len(t_evolve_list)):
+    Fs,Ff= fidelity_vs_site(
+        insert_idx,
+        input_ensemble,
+        H_coupling,
+        n,
+        t_evolve_list[t],
+        t_couple,
+        omega_0,
+        J,
+        beta,
+        periodic=False)
+    fidelity_list.append(Ff[insert_idx+n])
+    print(fidelity_list[-1],t_evolve_list[t])
+"""
 
 
 

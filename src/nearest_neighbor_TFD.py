@@ -1012,7 +1012,7 @@ def squeezing(v):
 
 
 
-N = 20
+N = 64
 k = 5
 
 m_squared = 13
@@ -1084,7 +1084,7 @@ S_tot = von_neumann_entropy_alt(Gamma_TFD)
 # investigate spreading
 ###########
 
-t0 = 3.6
+t0 = 15
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
@@ -1158,7 +1158,7 @@ for t in times_back:
 
 # define a squeezed input state
 #insert_idx = Gamma_LR.shape[0] // 8
-insert_idx = 1
+insert_idx = 16
 
 Gamma_2mode = two_mode_squeezed_state(r=1)
 
@@ -1586,6 +1586,8 @@ plt.plot(np.arange(N//2,N),site_fidelity)
 plt.xlabel("site")
 plt.ylabel("fidelity")
 plt.show()
+
+
 
 Gamma_teleported = extract_mode_block(Gamma_LR_wigner, teleported_idx-1)
 Gamma_teleported2 = extract_mode_block(Gamma_LR_no_insert, teleported_idx-1)
