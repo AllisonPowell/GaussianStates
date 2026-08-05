@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from functools import partial
 from scipy.linalg import expm, block_diag
 
 def symplectic_form(n):
@@ -304,191 +306,383 @@ def extract_mode_block(Gamma, mode_index):
     p_i = mode_index + n
     return Gamma[np.ix_([x_i, p_i], [x_i, p_i])]
 
+def heisenberg_evolution_operator(H, t, n):
+    Omega = symplectic_form(n)
+    return expm(Omega @ H * t)
+
+def operator_spread_over_time(H, t_list, op_index=0):
+    """
+    Computes the Heisenberg evolution of operator r_op_index over time.
+    
+    Returns:
+        coeffs_t: list of arrays of coefficients at each time
+    """
+    n = H.shape[0] // 2  # number of modes
+    coeffs_t = []
+
+    for t in t_list:
+        S_t = heisenberg_evolution_operator(H, t, n)
+        r0 = np.zeros(2 * n)
+        r0[op_index] = 1.0  # evolve x_{op_index}(t)
+
+        evolved = S_t @ r0
+        coeffs_t.append(evolved)
+
+    return np.array(coeffs_t)  # shape: (len(t_list), 2n)
+
+def scale_y_labels(x, pos,scale_factor):
+    return f"{x * scale_factor:.1f}"  # .1f formats to 1 decimal place
+
+
+def simple_light_cone(coeffs_t,t_evolve_fid,t_evolve_mi,t0):
+    T, dim = coeffs_t.shape
+    n = dim // 2
+
+    # |x_i| coefficients over time
+    plt.imshow(np.abs(coeffs_t[:, :n]), aspect='auto', cmap='inferno', origin='lower')
+    plt.axhline(t_evolve_mi*T/t0,color='blue',linestyle="dashed",label="mutual information time")
+    plt.axhline(t_evolve_fid*T/t0,color='red',linestyle="dashed",label="fidelity time")        
+    plt.ylabel('Time')
+    plt.xlabel('Site')
+
+    custom_formatter = partial(scale_y_labels, scale_factor=t0/T)
+
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(custom_formatter))
+    plt.colorbar(orientation='vertical', label=r'$|S_t(r_i(0))|$')
+    plt.legend()
+
+    plt.show()
+
+def teleportation_protocol(n, omega_bare, hopping_J, inv_temp,t_evolve,t_couple,periodic):
+    Gamma_TFD, HL = generate_interacting_tfd(n, omega_bare, hopping_J, inv_temp,periodic)
+
+
+    HL_full = np.zeros((4*n, 4*n))
+    HL_full[np.ix_(range(n), range(n))] = HL[:n, :n]                     # x-x
+    HL_full[np.ix_(range(n), range(2*n, 3*n))] = HL[:n, n:]             # x-p
+    HL_full[np.ix_(range(2*n, 3*n), range(n))] = HL[n:, :n]             # p-x
+    HL_full[np.ix_(range(2*n, 3*n), range(2*n, 3*n))] = HL[n:, n:]      # p-p
+
+
+
+    # Symplectic form
+    Omega = symplectic_form(2*n)
+
+    # Evolve backward in time
+
+    S_back = expm(-1 * Omega @ HL_full * t_evolve)
+    Gamma_back = S_back @ Gamma_TFD @ S_back.T
+
+    ###########
+    # insert quantum information on one side
+    ###########
+
+
+
+    #teleported_idx = bdy_len + q # index 0 on right side starts here
+
+
+    n_total = Gamma_TFD.shape[0] // 2
+
+    theta = np.pi
+    s = 1
+
+
+    Rot = np.array([[np.cos(theta), -np.sin(theta)],
+                [np.sin(theta), np.cos(theta)]])
+    Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
+                            [0, np.exp(2*s)]])
+
+    Gamma_rot_squeezed = Rot @ Squeeze @ Rot.T
+
+    Gamma_insert = insert_unentangled_mode(Gamma_back, insert_idx, Gamma_rot_squeezed)
+
+    Gamma_2mode = two_mode_squeezed_state(r=1)
+
+    Gamma_with_observer = insert_two_mode_state(Gamma_back, insert_idx, Gamma_2mode)
+
+    HL_full_padded = pad_matrix_for_observer(HL_full)
+
+    #######
+    # evolve forwards in time
+    #######
+    #S_forward_no_insert = expm(Omega @ HL_full * t_evolve)
+    #Gamma_forward = S_forward_no_insert @ Gamma_insert @ S_forward_no_insert.T
+
+    n_total = Gamma_with_observer.shape[0] // 2  # now 2n+1
+    observer_idx = 2*n
+
+    Omega_padded = symplectic_form(n_total)
+
+    I_obs_L = []
+    I_obs_R = []
+    I_insert = []
+
+    Gamma_LR_observer = Gamma_with_observer
+    Gamma_LR_wigner = Gamma_insert
+
+    S_forward_observer = expm(Omega_padded @ HL_full_padded * t_evolve)
+    Gamma_forward_observer = S_forward_observer @ Gamma_with_observer @ S_forward_observer.T
+
+    times_obs_forward = np.linspace(0,t_evolve,T)
+    S_forward_observer_dt = expm(Omega_padded @ HL_full_padded * dt)
+    S_forward_wigner_dt = expm(Omega @ HL_full * dt)
+
+    for t in enumerate(times_obs_forward):
+        Gamma_LR_observer = S_forward_observer_dt @ Gamma_LR_observer @ S_forward_observer_dt.T
+        #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
+        Gamma_LR_wigner = S_forward_wigner_dt @ Gamma_LR_wigner @ S_forward_wigner_dt.T
+        I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
+        I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
+        I_obs_L.append(I_L)
+        I_obs_R.append(I_R)
+        I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
+        
+    #######
+    # couple the two sides
+    #######
+
+    H_coupling = make_boundary_coupling(n, insert_idx, g=1)
+
+
+    #S_coupling = expm(Omega @ H_coupling * t_couple)
+    #Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
+
+    H_coupling_padded = pad_matrix_for_observer(H_coupling)
+    S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
+    Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
+
+    times_obs_coupling = np.linspace(0,t_couple,T)
+    S_coupling_observer_dt = expm(Omega_padded @ H_coupling_padded * dt_couple)
+    S_coupling_wigner_dt = expm(Omega @ H_coupling * dt_couple)
+
+    for t in enumerate(times_obs_coupling):
+        Gamma_LR_observer = S_coupling_observer_dt @ Gamma_LR_observer @ S_coupling_observer_dt.T
+        #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
+        Gamma_LR_wigner = S_coupling_wigner_dt @ Gamma_LR_wigner @ S_coupling_wigner_dt.T
+        I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
+        I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
+        I_obs_L.append(I_L)
+        I_obs_R.append(I_R)
+        I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
+        
+
+    ######
+    # evolve state forwards in time with KR
+    ######
+
+
+    HR_full = np.zeros((4*n, 4*n))
+    HR_full[np.ix_(range(n, 2*n), range(n, 2*n))] = HL[:n, :n]
+    HR_full[np.ix_(range(n, 2*n), range(3*n, 4*n))] = HL[:n, n:]
+    HR_full[np.ix_(range(3*n, 4*n), range(n, 2*n))] = HL[n:, :n]
+    HR_full[np.ix_(range(3*n, 4*n), range(3*n, 4*n))] = HL[n:, n:]
+
+    HR_full_padded = pad_matrix_for_observer(HR_full)
+
+
+
+    #S_final = expm(Omega @ HR_full * t_evolve)
+    #Gamma_final = S_final @ Gamma_coupled @ S_final.T
+
+    S_final_observer = expm(Omega_padded @ HR_full_padded * t_evolve)
+    Gamma_final_observer = S_final_observer @ Gamma_coupled_observer @ S_final_observer.T
+
+    times_obs_final = np.linspace(0,t_evolve,T)
+    S_final_observer_dt = expm(Omega_padded @ HR_full_padded * dt)
+    S_final_wigner_dt = expm(Omega @ HR_full * dt)
+
+
+    for t in enumerate(times_obs_forward):
+        Gamma_LR_observer = S_final_observer_dt @ Gamma_LR_observer @ S_final_observer_dt.T
+        #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
+        Gamma_LR_wigner = S_final_wigner_dt @ Gamma_LR_wigner @ S_final_wigner_dt.T
+        I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
+        I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
+        I_obs_L.append(I_L)
+        I_obs_R.append(I_R)
+        I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
+        times_obs_coupling = np.array(times_obs_coupling)
+    
+    times_obs_coupling+=t_evolve
+
+    times_obs_final = np.array(times_obs_final)
+    times_obs_final+=(t_evolve+t_couple)
+    times = np.concatenate((times_obs_forward,times_obs_coupling,times_obs_final))
+
+        
+    return Gamma_TFD,Gamma_LR_observer,Gamma_LR_wigner,I_obs_L,I_obs_R,I_insert,times,Gamma_rot_squeezed
+
+
+def mut_info_segments(Gamma_TFD,Gamma_LR_observer):
+    observer_idx = Gamma_TFD.shape[0]//2
+    mut_info_insert_regions = []
+    mut_info_telep_regions = []
+
+    lengths_array = np.linspace(1,Gamma_TFD.shape[0] // 8,Gamma_TFD.shape[0] // 8)
+    center_idx = Gamma_TFD.shape[0] // 8
+
+    for i in range(1,lengths_array.shape[0]):
+        #if i == 0:
+        #segment_telep = [teleported_idx]
+        if center_idx - i >= 0 and center_idx + i < Gamma_TFD.shape[0]//4:
+            segment_insert = np.arange(center_idx - i, center_idx + i+1)
+        if center_idx - i < 0:
+            diff = np.abs(center_idx - i)
+            segment_insert_1 = np.arange(Gamma_TFD.shape[0]//4-diff,Gamma_TFD.shape[0]//4)
+            segment_insert_2 = np.arange(0,center_idx+i+1)
+            segment_insert = np.concatenate((segment_insert_1,segment_insert_2))
+        if center_idx + i >= Gamma_TFD.shape[0]//4:
+            diff = center_idx + i - Gamma_TFD.shape[0]//4
+            segment_insert_1 = np.arange(center_idx-i,Gamma_TFD.shape[0]//4)
+            segment_insert_2 = np.arange(0,diff+1)
+            segment_insert = np.concatenate((segment_insert_1,segment_insert_2))
+        segment_insert = np.ndarray.tolist(segment_insert)
+        mut_info_insert_regions.append(mutual_information(Gamma_LR_observer,[observer_idx],segment_insert))
+        if center_idx  - i >= 0  and center_idx  + i < Gamma_TFD.shape[0]//4:
+            segment_telep = np.arange(center_idx + Gamma_TFD.shape[0]//4 - i, center_idx + Gamma_TFD.shape[0]//4 + i+1)
+        if center_idx - i < 0 :
+            diff = np.abs(center_idx - i)
+            segment_telep_1 = np.arange(Gamma_TFD.shape[0]//2-diff,Gamma_TFD.shape[0]//2)
+            segment_telep_2 = np.arange(Gamma_TFD.shape[0] // 4 ,center_idx + Gamma_TFD.shape[0] // 4 + i+1)
+            segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+        if center_idx + i >= Gamma_TFD.shape[0]//4:
+            diff = center_idx + i - Gamma_TFD.shape[0]//4
+            segment_telep_1 = np.arange(center_idx + Gamma_TFD.shape[0] // 4 - i,Gamma_TFD.shape[0]//2)
+            segment_telep_2 = np.arange(Gamma_TFD.shape[0] // 4,Gamma_TFD.shape[0] //4 + diff+1)
+            segment_telep = np.concatenate((segment_telep_1,segment_telep_2))
+        segment_telep = np.ndarray.tolist(segment_telep)
+        mut_info_telep_regions.append(mutual_information(Gamma_LR_observer, [observer_idx], segment_telep))
+
+
+
+    mut_info_insert_regions.append(mutual_information(Gamma_LR_observer, [observer_idx], list(range(n))))
+    mut_info_telep_regions.append(mutual_information(Gamma_LR_observer,[observer_idx],list(range(n,2*n))))
+
+    mi_total = mutual_information(Gamma_LR_observer,[observer_idx],list(range(2*n)))
+    mut_info_insert_regions=np.array(mut_info_insert_regions)
+    mut_info_telep_regions=np.array(mut_info_telep_regions)
+
+    mut_info_insert_regions*=1/mi_total
+    mut_info_telep_regions*=1/mi_total
+
+
+    full_lengths_array = 2 * lengths_array + 1
+    full_lengths_array[-1] = n
+
+    return mut_info_insert_regions,mut_info_telep_regions,full_lengths_array
+
+
+
+
 # --- Execution Parameters ---
-n = 5    # Size of the chain
+n = 10    # Size of the chain
 omega_bare = 1.0   # On-site energy
 hopping_J = 0.4    # Coupling strength between neighbors
 inv_temp = 1     # Inverse temperature beta
-t_evolve = 5
+t_evolve = 3.63
 t_couple = 1.6
 T = 40
 dt = t_evolve/T
 dt_couple = t_couple/T
 insert_idx = 1
+observer_idx = 2*n
 # Generate and simulate
 Gamma_TFD, HL = generate_interacting_tfd(n, omega_bare, hopping_J, inv_temp,periodic=True)
 simulate_and_plot_light_cone(HL, n,max_time=t_evolve)
 
-HL_full = np.zeros((4*n, 4*n))
-HL_full[np.ix_(range(n), range(n))] = HL[:n, :n]                     # x-x
-HL_full[np.ix_(range(n), range(2*n, 3*n))] = HL[:n, n:]             # x-p
-HL_full[np.ix_(range(2*n, 3*n), range(n))] = HL[n:, :n]             # p-x
-HL_full[np.ix_(range(2*n, 3*n), range(2*n, 3*n))] = HL[n:, n:]      # p-p
+t0 = 17
+
+t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
+
+coeffs_simple = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
+t_evolve_fid = 3.63
+t_evolve_mi = 5.89
+
+#t_evolve_fid = 4.63
+#t_evolve_mi = 5.64
+
+simple_light_cone(coeffs_simple,t_evolve_fid,t_evolve_mi,t0)
 
 
 
-# Symplectic form
-Omega = symplectic_form(2*n)
 
-# Evolve backward in time
-
-S_back = expm(-1 * Omega @ HL_full * t_evolve)
-Gamma_back = S_back @ Gamma_TFD @ S_back.T
-
-
-###########
-# insert quantum information on one side
-###########
+Gamma_TFD,Gamma_LR_observer_mi,Gamma_LR_wigner_mi,I_obs_L_mi,I_obs_R_mi,I_insert_mi,times_mi,Gamma_rot_squeezed=teleportation_protocol(n, omega_bare, hopping_J, inv_temp,t_evolve_mi,t_couple,periodic=True)
+Gamma_TFD,Gamma_LR_observer_fid,Gamma_LR_wigner_fid,I_obs_L_fid,I_obs_R_fid,I_insert_fid,times_fid,_=teleportation_protocol(n, omega_bare, hopping_J, inv_temp,t_evolve_fid,t_couple,periodic=True)
 
 
 
-#teleported_idx = bdy_len + q # index 0 on right side starts here
-
-
-n_total = Gamma_TFD.shape[0] // 2
-
-theta = np.pi
-s = 1
-
-
-Rot = np.array([[np.cos(theta), -np.sin(theta)],
-            [np.sin(theta), np.cos(theta)]])
-Squeeze = 0.5 * np.array([[np.exp(-2*s), 0],
-                        [0, np.exp(2*s)]])
-
-Gamma_rot_squeezed = Rot @ Squeeze @ Rot.T
-
-Gamma_insert = insert_unentangled_mode(Gamma_back, insert_idx, Gamma_rot_squeezed)
-
-Gamma_2mode = two_mode_squeezed_state(r=1)
-
-Gamma_with_observer = insert_two_mode_state(Gamma_back, insert_idx, Gamma_2mode)
-
-HL_full_padded = pad_matrix_for_observer(HL_full)
-
-#######
-# evolve forwards in time
-#######
-#S_forward_no_insert = expm(Omega @ HL_full * t_evolve)
-#Gamma_forward = S_forward_no_insert @ Gamma_insert @ S_forward_no_insert.T
-
-n_total = Gamma_with_observer.shape[0] // 2  # now 2n+1
-observer_idx = 2*n
-
-Omega_padded = symplectic_form(n_total)
-
-I_obs_L = []
-I_obs_R = []
-I_insert = []
-
-Gamma_LR_observer = Gamma_with_observer
-Gamma_LR_wigner = Gamma_insert
-
-S_forward_observer = expm(Omega_padded @ HL_full_padded * t_evolve)
-Gamma_forward_observer = S_forward_observer @ Gamma_with_observer @ S_forward_observer.T
-
-times_obs_forward = np.linspace(0,t_evolve,T)
-S_forward_observer_dt = expm(Omega_padded @ HL_full_padded * dt)
-S_forward_wigner_dt = expm(Omega @ HL_full * dt)
-
-for t in enumerate(times_obs_forward):
-    Gamma_LR_observer = S_forward_observer_dt @ Gamma_LR_observer @ S_forward_observer_dt.T
-    #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
-    Gamma_LR_wigner = S_forward_wigner_dt @ Gamma_LR_wigner @ S_forward_wigner_dt.T
-    I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
-    I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
-    I_obs_L.append(I_L)
-    I_obs_R.append(I_R)
-    I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
-    
-#######
-# couple the two sides
-#######
-
-H_coupling = make_boundary_coupling(n, insert_idx, g=1)
-
-
-#S_coupling = expm(Omega @ H_coupling * t_couple)
-#Gamma_coupled = S_coupling @ Gamma_forward @ S_coupling.T
-
-H_coupling_padded = pad_matrix_for_observer(H_coupling)
-S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
-Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
-
-times_obs_coupling = np.linspace(0,t_couple,T)
-S_coupling_observer_dt = expm(Omega_padded @ H_coupling_padded * dt_couple)
-S_coupling_wigner_dt = expm(Omega @ H_coupling * dt_couple)
-
-for t in enumerate(times_obs_coupling):
-    Gamma_LR_observer = S_coupling_observer_dt @ Gamma_LR_observer @ S_coupling_observer_dt.T
-    #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
-    Gamma_LR_wigner = S_coupling_wigner_dt @ Gamma_LR_wigner @ S_coupling_wigner_dt.T
-    I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
-    I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
-    I_obs_L.append(I_L)
-    I_obs_R.append(I_R)
-    I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
-    
-
-
-
-######
-# evolve state forwards in time with KR
-######
-
-
-HR_full = np.zeros((4*n, 4*n))
-HR_full[np.ix_(range(n, 2*n), range(n, 2*n))] = HL[:n, :n]
-HR_full[np.ix_(range(n, 2*n), range(3*n, 4*n))] = HL[:n, n:]
-HR_full[np.ix_(range(3*n, 4*n), range(n, 2*n))] = HL[n:, :n]
-HR_full[np.ix_(range(3*n, 4*n), range(3*n, 4*n))] = HL[n:, n:]
-
-HR_full_padded = pad_matrix_for_observer(HR_full)
-
-
-
-#S_final = expm(Omega @ HR_full * t_evolve)
-#Gamma_final = S_final @ Gamma_coupled @ S_final.T
-
-S_final_observer = expm(Omega_padded @ HR_full_padded * t_evolve)
-Gamma_final_observer = S_final_observer @ Gamma_coupled_observer @ S_final_observer.T
-
-times_obs_final = np.linspace(0,t_evolve,T)
-S_final_observer_dt = expm(Omega_padded @ HR_full_padded * dt)
-S_final_wigner_dt = expm(Omega @ HR_full * dt)
-
-
-for t in enumerate(times_obs_forward):
-    Gamma_LR_observer = S_final_observer_dt @ Gamma_LR_observer @ S_final_observer_dt.T
-    #Gamma_LR_no_insert = S_forward_no_insert @ Gamma_LR_no_insert @ S_forward_no_insert.T
-    Gamma_LR_wigner = S_final_wigner_dt @ Gamma_LR_wigner @ S_final_wigner_dt.T
-    I_L = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n)))
-    I_R = mutual_information(Gamma_LR_observer, [observer_idx], list(range(n, 2*n)))
-    I_obs_L.append(I_L)
-    I_obs_R.append(I_R)
-    I_insert.append(mutual_information(Gamma_LR_observer, [observer_idx], [insert_idx]))
-    
-times_obs_coupling = np.array(times_obs_coupling)
-times_obs_coupling+=t_evolve
-
-times_obs_final = np.array(times_obs_final)
-times_obs_final+=(t_evolve+t_couple)
-
-
-times = np.concatenate((times_obs_forward,times_obs_coupling,times_obs_final))
-plt.plot(times,I_obs_L,"k",label = "mutual info with left")
-plt.plot(times,I_obs_R,"r",label = "mutual info with right")
-plt.plot(times,I_insert,"green",label = "mutual info with insert")
+plt.plot(times_mi,I_obs_L_mi,"k",label = "mutual info with left mi")
+plt.plot(times_mi,I_obs_R_mi,"r",label = "mutual info with right mi")
+plt.plot(times_mi,I_insert_mi,"green",label = "mutual info with insert mi")
+plt.plot(times_fid,I_obs_L_fid,"k",linestyle="dashed",label = "mutual info with left fid")
+plt.plot(times_fid,I_obs_R_fid,"r",linestyle="dashed",label = "mutual info with right fid")
+plt.plot(times_fid,I_insert_fid,"green",linestyle="dashed",label = "mutual info with insert fid")
 plt.legend()
 plt.show()
 
 
 
-Gamma_teleported = extract_mode_block(Gamma_LR_wigner, insert_idx+n)
 
-print(0.5 * np.eye(2))
-Gamma_out_real = 0.5 * (Gamma_teleported + Gamma_teleported.conj().T)
-print(Gamma_out_real)
+mut_info_insert_regions_mi,mut_info_telep_regions_mi,full_lengths_array=mut_info_segments(Gamma_TFD,Gamma_LR_observer_mi)
+mut_info_insert_regions_fid,mut_info_telep_regions_fid,full_lengths_array=mut_info_segments(Gamma_TFD,Gamma_LR_observer_fid)
+
+
+
+plt.rc('font', size=14) 
+#linewidth=4
+plt.plot(full_lengths_array,mut_info_insert_regions_mi,'ko',linewidth=2,label = "insert side mi")
+plt.plot(full_lengths_array,mut_info_telep_regions_mi,'ro',linewidth=2, label ="teleport side mi")
+plt.plot(full_lengths_array,mut_info_insert_regions_fid,'bo',linewidth=2,label = "insert side fid")
+plt.plot(full_lengths_array,mut_info_telep_regions_fid,'go',linewidth=2, label ="teleport side fid")
+
+#plt.axhline(mutual_information(Gamma_LR_observer,[observer_idx],list(range(2*n))),color = "blue", label = "total mutual info with observer")
+plt.xlabel("length of segment")
+plt.ylabel("mutual information with observer")
+plt.title("Mutual Information of Segments")
+plt.legend()
+plt.show()
+
+
+final_mut_info_mi= []
+for i in range(Gamma_TFD.shape[0]//2):
+    final_mut_info_mi.append(mutual_information(Gamma_LR_observer_mi, [observer_idx], [i]))
+
+final_mut_info_mi = np.array(final_mut_info_mi)
+mi_total_mi = mutual_information(Gamma_LR_observer_mi,[observer_idx],list(range(2*n)))
+final_mut_info_mi*=1/mi_total_mi
+
+
+final_mut_info_fid= []
+for i in range(Gamma_TFD.shape[0]//2):
+    final_mut_info_fid.append(mutual_information(Gamma_LR_observer_fid, [observer_idx], [i]))
+
+final_mut_info_fid = np.array(final_mut_info_fid)
+mi_total_fid = mutual_information(Gamma_LR_observer_mi,[observer_idx],list(range(2*n)))
+final_mut_info_mi*=1/mi_total_fid
+
+plt.rc('font', size=14)
+plt.plot(np.arange(Gamma_TFD.shape[0]//2),final_mut_info_mi,'ko',linewidth=2,label="muntual information")
+plt.plot(np.arange(Gamma_TFD.shape[0]//2),final_mut_info_fid,'go',linewidth=2,label="fidelity")
+plt.axvline(insert_idx,color="blue",linestyle="dashed",linewidth=2,label = "insert site")
+plt.axvline(insert_idx+n,color="red",linestyle="dashed",linewidth=2,label="teleport site")
+plt.xlabel("site")
+plt.ylabel("mutual information with observer")
+plt.title("Sitewise Mutual Information")
+plt.legend()
+plt.show()
+
+
+
+
+Gamma_teleported_mi = extract_mode_block(Gamma_LR_wigner_mi, insert_idx+n)
+Gamma_teleported_fid = extract_mode_block(Gamma_LR_wigner_fid, insert_idx+n)
+
+
+
+Gamma_out_real_mi = 0.5 * (Gamma_teleported_mi + Gamma_teleported_mi.conj().T)
+Gamma_out_real_fid = 0.5 * (Gamma_teleported_fid + Gamma_teleported_fid.conj().T)
+
 
 
 import matplotlib.pyplot as plt
@@ -507,7 +701,9 @@ def plot_wigner_ellipse(Gamma_mode, ax, label='', color='blue'):
 fig, ax = plt.subplots()
 #plot_wigner_ellipse(np.array([[0.5, 0], [0, 0.5]]), ax, label='Vacuum', color='blue')
 plot_wigner_ellipse(Gamma_rot_squeezed, ax, label='Input', color='green')
-plot_wigner_ellipse(Gamma_out_real, ax, label='Output', color='red')
+plot_wigner_ellipse(Gamma_out_real_mi, ax,color='black',label='mutual information')
+plot_wigner_ellipse(Gamma_out_real_fid, ax,color='red',label='fidelity')
+
 #plot_wigner_ellipse(Gamma_out_shift, ax, label='No Input', color='orange')
 
 ax.set_xlim(-4, 4)

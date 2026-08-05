@@ -778,7 +778,7 @@ def H_coupling(N):
     return H_coupling_OG
 
 
-def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,coupling,t_couple):
+def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,coupling,t_couple,t_evolve):
     q = insert_idx
     if wormhole == False:
         N = 2*n_one_side
@@ -841,7 +841,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
         
         Gamma_TFD = tfd_cov_ring_from_normal_modes(N//2, k, m_squared, V, beta=1, eps_omega=1e-15)
 
-        t0 = 3.6
+        t0 = t_evolve
 
 
     else:
@@ -944,7 +944,7 @@ def teleportation_protocol(s,theta,insert_idx,wormhole,n_one_side,H_coupling,cou
 
         #HL = covmat_to_hamil(Gamma_reduced)
         HL = construct_modular_hamiltonian_with_pinning(Gamma_reduced)
-        t0=4
+        t0=t_evolve
 
 
     ############
@@ -2664,7 +2664,7 @@ def fidelity_vs_block_size_old(
 
     # --- 1) Run ONE observer simulation ONCE (choose a representative input) ---
     # Use, e.g., s=0, theta=0, but inserted as half of TMSV with observer.
-    Gamma_final_obs,Gamma_final, Gamma_forward_obs, Gamma_forward = teleportation_protocol(s=0.0, theta=0.0, insert_idx =insert_idx, wormhole=wormhole,n_one_side=N,H_coupling = H_coupling,coupling = True)
+    Gamma_final_obs,Gamma_final, Gamma_forward_obs, Gamma_forward = teleportation_protocol(s=0.0, theta=0.0, insert_idx =insert_idx, wormhole=wormhole,n_one_side=N,H_coupling = H_coupling,coupling=True)
     #Gamma_final_test_1, Gamma_final_obs_test,X_true_test,Y_true_test = teleport_test(s=0,theta=0,n_one_side=N,center_idx=32,m=8)  
     #Gamma_final_obs_null,Gamma_final_null, Gamma_forward_obs_null, Gamma_forward_null = teleportation_protocol(s=0.0, theta=0.0, insert_idx =32, wormhole=wormhole,H_coupling = H_coupling,coupling = False)   
    
@@ -2724,7 +2724,7 @@ def fidelity_vs_block_size_old(
         for s, theta in input_ensemble:
             # Run your usual protocol (NO observer) to get global Gamma_final
             Gamma_final_obs_1, Gamma_final, Gamma_forward_obs_1,Gamma_forward = teleportation_protocol(
-                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling = True
+                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling=True
             )
             #Gamma_final_obs_null, Gamma_final_null, Gamma_forward_obs_null,Gamma_forward_null = teleportation_protocol(
                 #s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling = False
@@ -2926,7 +2926,7 @@ def fidelity_vs_site(
     for s, theta in input_ensemble:
         # Run your usual protocol (NO observer) to get global Gamma_final
         Gamma_final_obs_1, Gamma_final, Gamma_forward_obs_1,Gamma_forward = teleportation_protocol(
-                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling = True,t_couple=t_couple
+                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling=True,t_couple=t_couple
             )        
             
         Vins.append(make_input_covariance(s,theta))
@@ -2965,6 +2965,51 @@ def fidelity_vs_site(
 
     return fid_symp,fid_flip
 
+def fidelity_single_site(
+    insert_idx,
+    input_ensemble,   # list of (s, theta) you use for fitting
+    H_coupling,
+    N,
+    wormhole,
+    t_couple,
+    t_evolve,
+    site):
+
+
+    Vins = []
+
+    Vouts = []
+
+
+    for s, theta in input_ensemble:
+        # Run your usual protocol (NO observer) to get global Gamma_final
+        Gamma_final_obs_1, Gamma_final, Gamma_forward_obs_1,Gamma_forward = teleportation_protocol(
+                s=s, theta=theta, insert_idx =insert_idx,wormhole=wormhole,n_one_side=N,H_coupling=H_coupling,coupling=True,t_couple=t_couple,t_evolve=t_evolve
+            )        
+            
+        Vins.append(make_input_covariance(s,theta))
+
+        Vouts.append(extract_subsystem_covariance(Gamma_final,[site]))
+        
+
+        # --- 5) Fit a single-mode Gaussian channel for this decoded mode ---
+
+    fid_symp = []
+    fid_flip = []
+
+    X, Y = fit_gaussian_channel(Vins, Vouts)
+    rot1,loss,squeeze,rot2 = decompose_X(X)
+
+    #S_dec_symp = decoder_from_X_symplectic(X)  # your preferred
+    S_dec_flip = decoder_from_X_flip(X)  # your preferred
+
+    #Fs = entanglement_fidelity_gaussian(X, Y, S_dec_symp, subtract_Y=False, r=1.0)
+    Ff = entanglement_fidelity_gaussian(X, Y, S_dec_flip, subtract_Y=False, r=1.0)
+
+
+    return Ff
+
+
 
 
 site_fidelities_symp=[]
@@ -2988,9 +3033,9 @@ sites=np.arange(0,2*N)
 #for f in range(len(sites)):
 
 H_coupling_OG = H_coupling(N)
-
-Fs,Ff= fidelity_vs_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False,t_couple = 3) 
 """
+Fs,Ff= fidelity_vs_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False,t_couple = 3) 
+
 for f in range(len(sites)):
     #Fs = fidelity_vs_block_size(block_sizes, obs_idx, teleported_idx, bdy_len, input_ensemble,H_coupling_OG,N=N,center_idx=sites[f]-N,wormhole=False)
     #plt.plot(block_sizes,Fs,label=sites[f])
@@ -2999,7 +3044,7 @@ plt.xlabel("decoder block size")
 plt.ylabel("fidelity")
 plt.legend()
 plt.show()
-"""    
+   
 
 
 #plt.plot(sites,Fs,label="symplectic")
@@ -3012,25 +3057,70 @@ plt.ylabel("fidelity")
 plt.title("Channel Fidelity")
 plt.legend()
 plt.show()
+"""
+
+
+coupling_times_mi = np.linspace(.1,30,300)
+coupling_mi = []
+for t in range(len(coupling_times_mi)):
+    Gamma_final,_,_,_= teleportation_protocol(s=0,theta=0,insert_idx=1,wormhole=False,n_one_side=10,H_coupling=H_coupling_OG,coupling=True,t_couple = coupling_times_mi[t],t_evolve=3.6)
+    n = int(Gamma_final.shape[0]//2)-1
+    observer_idx = n
+    mi_couple = mutual_information(Gamma_final,[observer_idx],list(range(n//2,n)))
+    mi_couple*= 1/(mutual_information(Gamma_final,[n],list(range(0,n))))
+    
+    coupling_mi.append(mi_couple)
 
 
 
-coupling_times = np.linspace(1,30,60)
-mi = []
-for t in range(len(coupling_times)):
-    Gamma_final,_,_,_= teleportation_protocol(s=0,theta=0,insert_idx=1,wormhole=False,n_one_side=10,H_coupling=H_coupling_OG,coupling=True,t_couple = coupling_times[t])
-    n = int(Gamma_final.shape[0]//2)
-    observer_idx = n-1
-    mi.append(mutual_information(Gamma_final,[observer_idx],list(range(n//2,n-1))))
+
+evolution_times_mi = np.linspace(.1,30,300)
+evolution_mi = []
+for t in range(len(evolution_times_mi)):
+    Gamma_final,_,_,_= teleportation_protocol(s=0,theta=0,insert_idx=1,wormhole=False,n_one_side=10,H_coupling=H_coupling_OG,coupling=True,t_couple = 3,t_evolve=evolution_times_mi[t])
+    n = int(Gamma_final.shape[0]//2)-1
+    observer_idx = n
+    mi_evolve = mutual_information(Gamma_final,[observer_idx],list(range(n//2,n)))
+    mi_evolve*= 1/(mutual_information(Gamma_final,[n],list(range(0,n))))
+    evolution_mi.append(mi_evolve)
+
+
+
+
+evolution_times_fid = np.linspace(.1,30,300)
+evolution_fidelities = []
+
+for t in range(len(evolution_times_fid)):
+    evolution_fidelities.append(fidelity_single_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False,t_couple = 3,t_evolve=evolution_times_fid[t],site=insert_idx+N))
+
+
+
+
+coupling_times_fid = np.linspace(.1,30,300)
+coupling_fidelities = []
+
+for t in range(len(coupling_times_fid)):
+    coupling_fidelities.append(fidelity_single_site(insert_idx,input_ensemble,H_coupling_OG,N=N,wormhole=False,t_couple = coupling_times_fid[t],t_evolve=3.6,site=insert_idx+N))
+
 
 plt.rc('font', size=14)
-plt.plot(coupling_times,mi,color="k",linewidth=2)
-plt.xlabel("coupling")
-plt.ylabel("mutual information")
-plt.title("Information Transferred to the Right")
+plt.plot(coupling_times_mi,coupling_mi,'k.',label="mutual informaion")
+plt.plot(coupling_times_fid,coupling_fidelities,'r.',label="fidelity")
+plt.axhline(.3062,color="blue",linestyle="dashed",label="no coupling")
+plt.xlabel("coupling time")
+plt.ylabel("metric")
 plt.legend()
 plt.show()
 
+
+plt.rc('font', size=14)
+plt.plot(evolution_times_mi,evolution_mi,'k.',label="mutual informaion")
+plt.plot(evolution_times_fid,evolution_fidelities,'r.',label="fidelity")
+plt.axhline(.3067,color="blue",linestyle="dashed",label="no coupling")
+plt.xlabel("evolution time")
+plt.ylabel("metric")
+plt.legend()
+plt.show()
 
 
 print("done")

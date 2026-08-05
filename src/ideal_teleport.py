@@ -2296,6 +2296,7 @@ Ss = np.linspace(-1, 1, 4)
 Thetas = np.linspace(0, 2*np.pi, 3, endpoint=False)
 input_ensemble = [(s, th) for s in Ss for th in Thetas]  # 120 points, deterministic
 
+"""
 sizes = np.array([3,4,5,6,7,8,9,10,15,20,25,30,35,40,45,50,55,60])
 
 df_sizes = pd.read_csv(f'{PROJ_DIR}/data/harmonic_chain_sizes.csv', header=None)
@@ -2349,7 +2350,7 @@ plt.ylabel("fidelity")
 plt.title("Standard Protocol")
 plt.legend()
 plt.show()
-
+"""
 """
 fid_noisy = []
 noise_mat = np.array([[1,1],[1,1]])
@@ -2364,6 +2365,50 @@ plt.ylabel("fidelity")
 plt.show()
 """
 
+"""
+df_line = pd.read_csv(f'{PROJ_DIR}/data/hopping_line_compare.csv', usecols=[0, 1],header=None)
+sizes = df_line[0]
+squeezing = df_line[1]
+
+noise = 0*np.eye(2)
+fidelities = []
+
+for r in range(len(squeezing)):
+    fidelities.append(fidelity_ideal(input_ensemble,squeezing[r],noise))
+
+plt.plot(sizes,fidelities,'ko')
+plt.xlabel("size")
+plt.ylabel("fidelity")
+plt.show()
+
+
+rows = zip(list(sizes),fidelities)
+with open(f'{PROJ_DIR}/data/hopping_line_compare_fidelities.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows)
+"""
+
+
+df_ring = pd.read_csv(f'{PROJ_DIR}/data/hopping_ring_compare.csv', usecols=[0, 1],header=None)
+sizes = df_ring[0]
+squeezing = df_ring[1]
+
+noise = 0*np.eye(2)
+fidelities = []
+
+for r in range(len(squeezing)):
+    fidelities.append(fidelity_ideal(input_ensemble,squeezing[r],noise))
+
+plt.plot(sizes,fidelities,'ko')
+plt.xlabel("size")
+plt.ylabel("fidelity")
+plt.show()
+
+
+rows = zip(list(sizes),fidelities)
+with open(f'{PROJ_DIR}/data/hopping_ring_compare_fidelities.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerows(rows)
 
 print("done")
 

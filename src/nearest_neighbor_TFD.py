@@ -1,5 +1,7 @@
 import numpy as np 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from functools import partial
 from scipy.linalg import inv, sqrtm, block_diag, eigh, expm, sqrtm, schur, det
 from thewalrus.symplectic import xpxp_to_xxpp
 
@@ -372,6 +374,28 @@ def plot_light_cone(coeffs_t, title="Operator Spread"):
     fig.colorbar(im2, ax=axs[1], orientation='vertical', label='|Coefficient|')
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
+    plt.show()
+
+def scale_y_labels(x, pos,scale_factor):
+    return f"{x * scale_factor:.1f}"  # .1f formats to 1 decimal place
+
+
+def simple_light_cone(coeffs_t,t_evolve,t0):
+    T, dim = coeffs_t.shape
+    n = dim // 2
+
+    # |x_i| coefficients over time
+    plt.imshow(np.abs(coeffs_t[:, :n]), aspect='auto', cmap='inferno', origin='lower')
+    plt.axhline(t_evolve*T/t0,color='blue',linestyle="dashed",label="fidelity time")
+    plt.ylabel('Time')
+    plt.xlabel('Site')
+
+    custom_formatter = partial(scale_y_labels, scale_factor=t0/T)
+
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(custom_formatter))
+    plt.colorbar(orientation='vertical', label=r'$|S_t(r_i(0))|$')
+    plt.legend()
+
     plt.show()
 
 import numpy as np
@@ -1012,7 +1036,7 @@ def squeezing(v):
 
 
 
-N = 64
+N = 20
 k = 5
 
 m_squared = 13
@@ -1084,13 +1108,14 @@ S_tot = von_neumann_entropy_alt(Gamma_TFD)
 # investigate spreading
 ###########
 
-t0 = 15
+t0 = 5
 
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
 plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
 
-
+coeffs_simple = operator_spread_over_time(HL, t_list, op_index=0)  # evolve x_0(t)
+simple_light_cone(coeffs_simple,3.6,t0)
 
 
 

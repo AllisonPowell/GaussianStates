@@ -1,6 +1,8 @@
 import numpy as np
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('TkAgg')
 from scipy.linalg import inv, expm, sqrtm, schur, block_diag, eigh, det, polar
 from thewalrus.symplectic import xpxp_to_xxpp, sympmat
 
@@ -937,6 +939,8 @@ def teleportation_protocol(s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_e
     S_coupling_observer = expm(Omega_padded @ H_coupling_padded * t_couple)
     Gamma_coupled_observer = S_coupling_observer @ Gamma_forward_observer @ S_coupling_observer.T
 
+    #Gamma_coupled_observer = Gamma_forward_observer
+    #Gamma_coupled = Gamma_forward
 
     ######
     # evolve state forwards in time with KR
@@ -1710,8 +1714,9 @@ omega_0 = 1
 J = .4
 beta = 1
 insert_idx = 1
-t_evolve = 4.9
+t_evolve = 4.55
 t_couple = 1.6
+
 
 
 Ss = np.linspace(-1, 1, 4)
@@ -1749,26 +1754,85 @@ plt.title("Channel Fidelity")
 plt.legend()
 plt.show()
 
-"""
-t_evolve_list = np.linspace(1,20,140)
-fidelity_list = []
-for t in range(len(t_evolve_list)):
+
+
+t_evolve_fid = np.linspace(.1,20,80)
+fidelity_evolve_list = []
+for t in range(len(t_evolve_fid)):
     Fs,Ff= fidelity_vs_site(
         insert_idx,
         input_ensemble,
         H_coupling,
         n,
-        t_evolve_list[t],
+        t_evolve_fid[t],
         t_couple,
         omega_0,
         J,
         beta,
         periodic=False)
-    fidelity_list.append(Ff[insert_idx+n])
-    print(fidelity_list[-1],t_evolve_list[t])
-"""
+    fidelity_evolve_list.append(Ff[insert_idx+n])
+    #print(fidelity_evolve_list[-1],t_evolve_list[t])
 
 
+
+t_couple_fid = np.linspace(.1,12.5,80)
+fidelity_couple_list = []
+for t in range(len(t_couple_fid)):
+    Fs,Ff= fidelity_vs_site(
+        insert_idx,
+        input_ensemble,
+        H_coupling,
+        n,
+        t_evolve,
+        t_couple_fid[t],
+        omega_0,
+        J,
+        beta,
+        periodic=False)
+    fidelity_couple_list.append(Ff[insert_idx+n])
+    #print(fidelity_couple_list[-1],t_couple_list[t])
+
+
+
+
+t_evolve_mi = np.linspace(.1,20,80)
+t_couple_mi = np.linspace(.1,12.5,80)
+
+mi_evolve_list = []
+mi_couple_list = []
+
+s=1
+theta = np.pi/2
+
+for t in range(len(t_evolve_mi)):
+    Gamma_obs_evolve,_,_,_ = teleportation_protocol(s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve_mi[t],t_couple,periodic=False)
+    mi_evolve = mutual_information(Gamma_obs_evolve,[2*n],list(range(n,2*n)))
+    mi_evolve*= 1/(mutual_information(Gamma_obs_evolve,[2*n],list(range(0,2*n))))
+    mi_evolve_list.append(mi_evolve)
+    
+    Gamma_obs_couple,_,_,_ = teleportation_protocol(s,theta,n,insert_idx, omega_0, J, beta,H_coupling,t_evolve,t_couple_mi[t],periodic=False)
+    mi_couple = mutual_information(Gamma_obs_couple,[2*n],list(range(n,2*n)))
+    mi_couple*= 1/(mutual_information(Gamma_obs_couple,[2*n],list(range(0,2*n))))    
+    mi_couple_list.append(mi_couple)
+
+
+plt.rc('font', size=14)
+plt.plot(t_evolve_mi,mi_evolve_list,'k-',label="mutual information")
+plt.plot(t_evolve_fid,fidelity_evolve_list,'r-',label="fidelity")
+plt.axhline(.2225,color="blue",linestyle="dashed",label="no coupling")
+plt.xlabel("evolution time")
+plt.ylabel("metric")
+plt.legend()
+plt.show()
+
+plt.rc('font', size=14)
+plt.plot(t_couple_mi,mi_couple_list,'k-',label="mutual information")
+plt.plot(t_couple_fid,fidelity_couple_list,'r-',label="fidelity")
+plt.axhline(.2225,color="blue",linestyle="dashed",label="no coupling")
+plt.xlabel("coupling time")
+plt.ylabel("metric")
+plt.legend()
+plt.show()
 
 print("stop")
 

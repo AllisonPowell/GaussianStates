@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import inv, sqrtm, block_diag, eigh, expm, sqrtm, schur, det
-
+import matplotlib.ticker as ticker
+from functools import partial
 
 
 def symplectic_form(n):
@@ -61,6 +62,27 @@ def plot_light_cone(coeffs_t, title="Operator Spread"):
     plt.tight_layout()
     plt.show()
 
+def scale_y_labels(x, pos,scale_factor):
+    return f"{x * scale_factor:.1f}"  # .1f formats to 1 decimal place
+
+
+def simple_light_cone(coeffs_t,t_evolve,t0):
+    T, dim = coeffs_t.shape
+    n = dim // 2
+
+    # |x_i| coefficients over time
+    plt.imshow(np.abs(coeffs_t[:, :n]), aspect='auto', cmap='inferno', origin='lower')
+    plt.axhline(t_evolve*T/t0,color='blue',linestyle="dashed",label="fidelity time")
+    plt.ylabel('Time')
+    plt.xlabel('Site')
+
+    custom_formatter = partial(scale_y_labels, scale_factor=1/t0/4)
+
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(custom_formatter))
+    plt.colorbar(orientation='vertical', label=r'$|S_t(r_i(0))|$')
+    plt.legend()
+
+    plt.show()
 
 
 r = 1
@@ -101,6 +123,8 @@ t0 = 30
 t_list = np.linspace(0, t0, 100)  # 100 time steps from t=0 to t=10
 coeffs_t = operator_spread_over_time(KL, t_list, op_index=0)  # evolve x_0(t)
 plot_light_cone(coeffs_t, title="Light Cone of $x_0(t)$")
+
+
 
 
 print("done")
